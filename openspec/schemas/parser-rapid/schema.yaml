@@ -1,0 +1,70 @@
+name: parser-rapid
+version: 1
+description: Genuinely low-risk, bounded changes only (copy fixes, tooling,
+  docs) - discuss → proposal → tasks. No specs/design/security-privacy/
+  test-strategy ceremony. See config.yaml's schema-selection guidance for
+  when this is NOT the right choice.
+artifacts:
+  - id: discuss
+    generates: discuss.md
+    description: Confirms a real Sprints story exists and records initial scope/risk
+      before any drafting starts
+    template: discuss.md
+    instruction: |
+      Do not proceed without a Zoho Sprints story that exists under an
+      approved epic story-split entry. Ask for its ID and link if not given
+      - do not assume one, and do not invent a story.
+
+      Record: Scope (what this covers, one or two sentences), Users (who is
+      affected), and an initial Risks read.
+
+      Before drafting anything else, confirm this genuinely matches
+      parser-rapid's criteria: no data-model change, no new external
+      integration, no security/credential surface, no change to the
+      field-discipline or key-value-storage rules in project context. If
+      any of those apply, stop and say this should be parser-standard or
+      parser-sensitive instead - do not proceed on the rapid schema anyway.
+    requires: []
+
+  - id: proposal
+    generates: proposal.md
+    description: Initial proposal document outlining the change
+    template: proposal.md
+    instruction: |
+      Create the proposal document that establishes WHY this change is needed.
+
+      Keep this short - this schema is for bounded, low-risk changes.
+      Sections: Why (1-2 sentences), What Changes (bullet list), Impact
+      (affected files/systems). No Capabilities section is required here;
+      set skip_specs: true in the change's .openspec.yaml since this schema
+      has no specs artifact.
+
+      Still fill in the risk classification table honestly - this is what
+      makes the rapid-vs-standard choice reviewable after the fact.
+    requires:
+      - discuss
+
+  - id: tasks
+    generates: tasks.md
+    description: Implementation checklist with trackable tasks
+    template: tasks.md
+    instruction: |
+      Create the task list that breaks down the implementation work.
+
+      **IMPORTANT: Follow the template below exactly.** The apply phase parses
+      checkbox format to track progress. Tasks not using `- [ ]` won't be tracked.
+
+      Each task MUST be a checkbox and MUST state how to verify completion
+      (a test, command, observable behavior, or delivered artifact).
+    requires:
+      - proposal
+
+apply:
+  requires: [ tasks ]
+  tracks: tasks.md
+  instruction: |
+    Read context files, work through pending tasks, mark complete as you go.
+    Pause if you hit blockers or need clarification.
+
+    Never report a check or command as passed without having actually run
+    it in this session.

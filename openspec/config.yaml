@@ -1,0 +1,158 @@
+schema: parser-standard
+
+context: |
+  Product: Document Parser (MVP) — users upload text-layer documents
+    and an LLM extracts useful information present in them. No
+    template or predefined field list exists for this phase. Template-
+    driven extraction is a deferred feature. See docs/BRD.md.
+
+  Frontend:
+  - React
+  - TypeScript
+  - Vite
+  - MUI
+
+  Backend:
+  - Python 3.12+
+  - FastAPI
+  - Pydantic v2
+  - SQLAlchemy 2.x
+  - Alembic
+
+  Data:
+  - PostgreSQL.
+  - No secondary application database.
+  - Database shape must not vary by document type.
+
+  File storage:
+  - S3-compatible object storage for source documents.
+
+  LLM:
+  - Anthropic Python SDK.
+  - Free-form extraction for the MVP.
+  - No template or predefined extraction field list in this phase.
+
+  Document ingestion:
+  - Local upload only for the MVP.
+  - Additional document sources are deferred.
+
+  Integrations:
+  - Zoho Sprints for work tracking.
+  - Additional Zoho or external integrations are introduced only
+    through approved stories.
+  - Prefer an available connector/MCP where appropriate; otherwise use
+    the service's supported API.
+
+  Deployment:
+  - Docker.
+  - No Kubernetes for the MVP.
+  - Parsing is synchronous initially.
+  - Introduce background processing only when volume or latency
+    demonstrates the need.
+
+  Repository:
+  - Inspect the existing repository and CLAUDE.md before proposing
+    implementation.
+  - Follow established architecture and conventions.
+  - Reuse existing abstractions rather than creating parallel ones.
+  - Explain significant architecture changes in design.md.
+
+  Work tracking:
+  - Zoho Sprints is the execution-tracking system.
+  - Every OpenSpec change must reference a real Zoho Epic ID and Story ID.
+  - OpenSpec is the engineering source of truth for the approved change.
+  - Developers implement approved changes using /opsx:apply.
+
+  Git policy:
+  - Implement each developer story on a feature branch.
+  - Reference the Zoho Story ID and OpenSpec change ID in branch/PR
+    traceability.
+  - Deliver implementation through a GitHub pull request.
+  - PRs include the story ID, change ID, implementation summary, and
+    relevant test evidence.
+  - AI may prepare code, branches, commits, and pull requests.
+  - AI must never approve or merge its own PR.
+  - Human approval and required checks are mandatory before merge.
+
+  Hard constraints — never relax without flagging a Concern:
+  - Extracted fields and values must be grounded in the source document.
+    Unsupported or ambiguous output must not be treated as confirmed fact.
+  - There is no template constraining extraction scope in the MVP.
+  - Results are stored as field-level key/value records — one per
+    document/field pair — never as document-type-specific columns.
+  - The storage model must remain compatible with the planned future
+    template-driven extraction capability.
+
+  Data policy:
+  - Development/test prompts, fixtures, logs, examples, and commits use
+    synthetic or de-identified data only.
+  - Never place production credentials or secrets in prompts, logs,
+    fixtures, commits, or repository files.
+  - Production document content may be sent only through the approved
+    LLM extraction path and must not be written to application logs.
+
+  Schema selection:
+  - parser-standard is the default for normal product stories.
+  - parser-rapid is only for genuinely trivial, bounded, low-risk work.
+  - parser-sensitive is required for:
+      - data-model changes
+      - new external integrations
+      - authentication/security/credential handling
+      - changes to sensitive-data handling
+      - changes to the hard constraints
+      - significant architecture changes
+  - Select schema based on risk, not size.
+  - When unsure, begin with parser-standard and surface possible
+    escalation in proposal.md.
+  - Never downgrade a classification merely to reduce process overhead.
+
+rules:
+
+  discuss:
+    - Do not proceed without a real Zoho Sprints story under an approved
+      epic split entry.
+    - Ask rather than invent missing business context.
+
+  proposal:
+    - Reference the Zoho Epic, Story ID, and BRD source.
+    - State the problem, scope, proposed change, dependencies, and impact.
+    - If the discovered impact requires a different schema, say so and
+      stop before completing the proposal under the wrong schema.
+    - Include a rollback approach.
+
+  specs:
+    - Requirements describe observable behavior.
+    - Extraction requirements remain free-form for this MVP and must not
+      introduce an implicit template or fixed field list.
+    - Extracted values remain field-level records.
+    - Reuse existing capability specifications when appropriate.
+
+  design:
+    - Describe the technical approach and relevant frontend, backend,
+      database, and integration impacts.
+    - Explicitly confirm both hard constraints.
+    - Preserve existing architecture unless a change is justified.
+    - Add a Concerns section for conflicts or unresolved trade-offs.
+
+  security-privacy:
+    - Classification must agree with proposal.md's Impact.
+    - Identify sensitive-data, credential, and external-access implications.
+    - Ensure production content and credentials follow the Data policy.
+
+  review:
+    - This is a human-authored architecture approval record.
+    - AI must never populate Decision or Reviewed-by.
+    - A blank Decision does not constitute approval.
+
+  test-strategy:
+    - Cover important functional, integration, data, and security risks.
+    - Include tests for Concerns identified during design or
+      security/privacy review.
+    - Reuse existing testing patterns where appropriate.
+
+  tasks:
+    - Break the approved design into actionable developer tasks.
+    - Group related work logically.
+    - Include relevant test tasks.
+    - Changes touching credentials, external calls, or hard constraints
+      require explicit verification tasks.
