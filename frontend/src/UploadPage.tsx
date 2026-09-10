@@ -63,10 +63,23 @@ export function UploadPage() {
         </Button>
 
         {document && (
-          <Alert severity="success">
-            Uploaded successfully. Document ID: {document.id} (status:{" "}
-            {document.status})
-          </Alert>
+          <>
+            <Alert severity="success">
+              Uploaded successfully. Document ID: {document.id} (status:{" "}
+              {document.status})
+            </Alert>
+            {document.extraction_status === "succeeded" && (
+              <Alert severity="success">Text extraction succeeded.</Alert>
+            )}
+            {document.extraction_status === "failed" && (
+              <Alert severity="warning">
+                Text extraction failed
+                {document.extraction_failure_reason
+                  ? `: ${document.extraction_failure_reason}`
+                  : "."}
+              </Alert>
+            )}
+          </>
         )}
 
         {errorDetail && <Alert severity="error">{errorDetail}</Alert>}

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, DateTime, String
+from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -24,3 +24,21 @@ class Document(Base):
     storage_key: Mapped[str] = mapped_column(String(512))
     status: Mapped[str] = mapped_column(String(32), default="received")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class DocumentExtraction(Base):
+    """A document's extracted text-layer content and extraction outcome.
+    Stores the document's full plain text as a single row — not the
+    field-level key/value records the future LLM field-extraction
+    capability will use."""
+
+    __tablename__ = "document_extractions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("documents.id"), unique=True
+    )
+    extracted_text: Mapped[str | None] = mapped_column(Text, default=None)
+    status: Mapped[str] = mapped_column(String(32))
+    failure_reason: Mapped[str | None] = mapped_column(String(1024), default=None)
+    extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
