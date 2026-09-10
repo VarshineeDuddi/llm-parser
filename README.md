@@ -7,8 +7,6 @@ implemented. See `COMMANDS.md` for the exact command sequence.
 
 ## What's here
 
-- `docs/BRD.md` — the business requirement the first stories will be
-  proposed from.
 - `openspec/config.yaml` — project context and per-artifact rules, shown
   to the agent on every artifact it drafts.
 - `openspec/schemas/` — three workflow schemas:
