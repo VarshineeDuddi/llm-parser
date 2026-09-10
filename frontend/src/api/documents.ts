@@ -7,6 +7,8 @@ export interface DocumentOut {
   format: string;
   size_bytes: number;
   created_at: string;
+  extraction_status: string;
+  extraction_failure_reason: string | null;
 }
 
 export interface UploadError {

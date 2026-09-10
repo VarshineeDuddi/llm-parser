@@ -1,13 +1,15 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
+from app.extraction import run_extraction
 from app.formats import detect_format
-from app.models import Document
-from app.schemas import DocumentOut
+from app.models import Document, DocumentExtraction
+from app.schemas import DocumentOut, ExtractionOut
 from app.storage import storage_client
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -17,7 +19,7 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 async def upload_document(
     file: UploadFile | None = None,
     db: Session = Depends(get_db),
-) -> Document:
+) -> DocumentOut:
     if file is None or not file.filename:
         raise HTTPException(status_code=400, detail="No file was provided.")
 
@@ -52,4 +54,29 @@ async def upload_document(
     db.add(document)
     db.commit()
     db.refresh(document)
-    return document
+
+    extraction = run_extraction(document, db)
+
+    return DocumentOut(
+        id=document.id,
+        status=document.status,
+        original_filename=document.original_filename,
+        format=document.format,
+        size_bytes=document.size_bytes,
+        created_at=document.created_at,
+        extraction_status=extraction.status,
+        extraction_failure_reason=extraction.failure_reason,
+    )
+
+
+@router.get("/{document_id}/extraction", response_model=ExtractionOut)
+def get_extraction(document_id: uuid.UUID, db: Session = Depends(get_db)) -> DocumentExtraction:
+    extraction = db.execute(
+        select(DocumentExtraction).where(DocumentExtraction.document_id == document_id)
+    ).scalar_one_or_none()
+    if extraction is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No extraction found for this document.",
+        )
+    return extraction
