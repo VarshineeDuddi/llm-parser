@@ -24,6 +24,9 @@ class Document(Base):
     storage_key: Mapped[str] = mapped_column(String(512))
     status: Mapped[str] = mapped_column(String(32), default="received")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    duplicate_of_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("documents.id"), default=None
+    )
 
 
 class DocumentExtraction(Base):
@@ -42,3 +45,4 @@ class DocumentExtraction(Base):
     status: Mapped[str] = mapped_column(String(32))
     failure_reason: Mapped[str | None] = mapped_column(String(1024), default=None)
     extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    content_hash: Mapped[str | None] = mapped_column(String(64), index=True, default=None)
