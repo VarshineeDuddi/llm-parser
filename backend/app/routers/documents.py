@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
+from app.duplicates import run_duplicate_detection
 from app.extraction import run_extraction
 from app.formats import detect_format
 from app.models import Document, DocumentExtraction
@@ -13,6 +14,23 @@ from app.schemas import DocumentOut, ExtractionOut
 from app.storage import storage_client
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+
+def _document_out(document: Document, db: Session) -> DocumentOut:
+    extraction = db.execute(
+        select(DocumentExtraction).where(DocumentExtraction.document_id == document.id)
+    ).scalar_one()
+    return DocumentOut(
+        id=document.id,
+        status=document.status,
+        original_filename=document.original_filename,
+        format=document.format,
+        size_bytes=document.size_bytes,
+        created_at=document.created_at,
+        extraction_status=extraction.status,
+        extraction_failure_reason=extraction.failure_reason,
+        duplicate_of_id=document.duplicate_of_id,
+    )
 
 
 @router.post("/upload", response_model=DocumentOut, status_code=status.HTTP_201_CREATED)
@@ -56,17 +74,18 @@ async def upload_document(
     db.refresh(document)
 
     extraction = run_extraction(document, db)
+    if extraction.status == "succeeded":
+        run_duplicate_detection(document, extraction, db)
 
-    return DocumentOut(
-        id=document.id,
-        status=document.status,
-        original_filename=document.original_filename,
-        format=document.format,
-        size_bytes=document.size_bytes,
-        created_at=document.created_at,
-        extraction_status=extraction.status,
-        extraction_failure_reason=extraction.failure_reason,
-    )
+    return _document_out(document, db)
+
+
+@router.get("/{document_id}", response_model=DocumentOut)
+def get_document(document_id: uuid.UUID, db: Session = Depends(get_db)) -> DocumentOut:
+    document = db.get(Document, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    return _document_out(document, db)
 
 
 @router.get("/{document_id}/extraction", response_model=ExtractionOut)

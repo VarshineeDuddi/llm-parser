@@ -79,6 +79,12 @@ export function UploadPage() {
                   : "."}
               </Alert>
             )}
+            {document.duplicate_of_id && (
+              <Alert severity="info">
+                This document is a duplicate of document{" "}
+                {document.duplicate_of_id}.
+              </Alert>
+            )}
           </>
         )}
 

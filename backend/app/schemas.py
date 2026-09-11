@@ -15,6 +15,7 @@ class DocumentOut(BaseModel):
     created_at: datetime
     extraction_status: str
     extraction_failure_reason: str | None = None
+    duplicate_of_id: uuid.UUID | None = None
 
 
 class ExtractionOut(BaseModel):

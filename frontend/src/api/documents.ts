@@ -9,6 +9,7 @@ export interface DocumentOut {
   created_at: string;
   extraction_status: string;
   extraction_failure_reason: string | null;
+  duplicate_of_id: string | null;
 }
 
 export interface UploadError {
