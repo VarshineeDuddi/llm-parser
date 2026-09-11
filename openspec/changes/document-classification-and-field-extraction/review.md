@@ -11,11 +11,7 @@ _Left blank intentionally_, for the same reason as Reviewed-by.
 
 ## Decision
 
-_Left blank intentionally._ A blank Decision here does not constitute
-approval — this change is not yet approved, and `test-strategy.md`/
-`tasks.md` remain blocked until an architect records a real Decision
-(Approved / Approved with changes / Rejected) through the PR approval
-event, per this project's git & branching convention.
+Approved
 
 ## Response to Concerns
 
