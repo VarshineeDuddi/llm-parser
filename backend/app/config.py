@@ -14,5 +14,8 @@ class Settings(BaseSettings):
 
     max_upload_size_bytes: int = 25 * 1024 * 1024
 
+    anthropic_api_key: str
+    anthropic_base_url: str | None = None
+
 
 settings = Settings()

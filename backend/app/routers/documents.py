@@ -9,6 +9,7 @@ from app.db import get_db
 from app.duplicates import run_duplicate_detection
 from app.extraction import run_extraction
 from app.formats import detect_format
+from app.llm_extraction import run_llm_extraction
 from app.models import Document, DocumentExtraction
 from app.schemas import DocumentOut, ExtractionOut
 from app.storage import storage_client
@@ -76,6 +77,7 @@ async def upload_document(
     extraction = run_extraction(document, db)
     if extraction.status == "succeeded":
         run_duplicate_detection(document, extraction, db)
+        run_llm_extraction(document, extraction, db)
 
     return _document_out(document, db)
 

@@ -46,3 +46,35 @@ class DocumentExtraction(Base):
     failure_reason: Mapped[str | None] = mapped_column(String(1024), default=None)
     extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     content_hash: Mapped[str | None] = mapped_column(String(64), index=True, default=None)
+
+
+class ExtractionResult(Base):
+    """One field/value fact the LLM extracted for a document, including its
+    classified document type as a row with the reserved field name
+    `_document_type` -- never a document-type-specific column. Every row
+    carries a `source_quote` verified against the document's extracted
+    text before being persisted."""
+
+    __tablename__ = "extraction_results"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id"))
+    field_name: Mapped[str] = mapped_column(String(256))
+    field_value: Mapped[str] = mapped_column(Text)
+    source_quote: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class LlmExtraction(Base):
+    """LLM extraction outcome per document, independent of
+    `DocumentExtraction.status` (text-layer extraction's own outcome)."""
+
+    __tablename__ = "llm_extractions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("documents.id"), unique=True
+    )
+    status: Mapped[str] = mapped_column(String(32))
+    failure_reason: Mapped[str | None] = mapped_column(String(1024), default=None)
+    extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
