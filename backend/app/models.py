@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -55,9 +55,17 @@ class ExtractionResult(Base):
     carries a `source_quote` verified against the document's extracted
     text before being persisted, plus a confidence score and a
     `needs_review` flag computed for entries that already passed that
-    grounding check."""
+    grounding check. At most one row per (document_id, field_name) --
+    mechanically enforced by a DB-level unique constraint, not just
+    caller discipline."""
 
     __tablename__ = "extraction_results"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_id", "field_name", name="uq_extraction_results_document_id_field_name"
+        ),
+        Index("ix_extraction_results_field_name", "field_name"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id"))
@@ -65,8 +73,8 @@ class ExtractionResult(Base):
     field_value: Mapped[str] = mapped_column(Text)
     source_quote: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
-    confidence: Mapped[float | None] = mapped_column(Float, default=None)
-    needs_review: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    confidence: Mapped[float] = mapped_column(Float)
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class LlmExtraction(Base):

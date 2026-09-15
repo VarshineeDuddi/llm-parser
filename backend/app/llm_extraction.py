@@ -128,6 +128,23 @@ def compute_confidence(source_quote: str, extracted_text: str, model_confidence:
     return confidence
 
 
+def _dedupe_by_field_name(
+    entries: list[dict[str, str | float]]
+) -> list[dict[str, str | float]]:
+    """Keep only the highest-final-confidence entry per field_name. Storage
+    allows at most one record per (document, field_name) pair, so if one
+    extraction run produces more than one grounded candidate for the same
+    field, this decides which one gets persisted -- deduplication, not a
+    constraint violation. Entries with no collision pass through unchanged."""
+    best_by_field: dict[str, dict[str, str | float]] = {}
+    for entry in entries:
+        field_name = entry["field_name"]
+        existing = best_by_field.get(field_name)
+        if existing is None or entry["confidence"] > existing["confidence"]:
+            best_by_field[field_name] = entry
+    return list(best_by_field.values())
+
+
 def run_llm_extraction(document: Document, extraction: DocumentExtraction, db: Session) -> None:
     """Classify and extract fields for `document` via the LLM, persisting
     only grounded entries as ExtractionResult rows, plus the outcome. Any
@@ -148,22 +165,27 @@ def run_llm_extraction(document: Document, extraction: DocumentExtraction, db: S
         db.commit()
         return
 
+    grounded_entries = []
     for entry in entries:
         source_quote = entry["source_quote"]
         if is_grounded(source_quote, extraction.extracted_text):
             confidence = compute_confidence(
                 source_quote, extraction.extracted_text, entry["confidence"]
             )
-            db.add(
-                ExtractionResult(
-                    document_id=document.id,
-                    field_name=entry["field_name"],
-                    field_value=entry["value"],
-                    source_quote=source_quote,
-                    confidence=confidence,
-                    needs_review=confidence < CONFIDENCE_THRESHOLD,
-                )
+            grounded_entries.append({**entry, "confidence": confidence})
+
+    for entry in _dedupe_by_field_name(grounded_entries):
+        confidence = entry["confidence"]
+        db.add(
+            ExtractionResult(
+                document_id=document.id,
+                field_name=entry["field_name"],
+                field_value=entry["value"],
+                source_quote=entry["source_quote"],
+                confidence=confidence,
+                needs_review=confidence < CONFIDENCE_THRESHOLD,
             )
+        )
 
     outcome = LlmExtraction(document_id=document.id, status="succeeded")
     db.add(outcome)

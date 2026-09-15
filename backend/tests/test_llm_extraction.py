@@ -4,9 +4,12 @@ import uuid
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import inspect
+from sqlalchemy.exc import IntegrityError
 
 from app import llm_client, llm_extraction
 from app.config import Settings
+from app.db import engine
 from app.llm_extraction import (
     AMBIGUOUS_LOCATION_CAP,
     CONFIDENCE_THRESHOLD,
@@ -677,3 +680,133 @@ def test_llm_extraction_runs_for_every_successful_text_extraction_no_duplicate_s
         document_id = uuid.UUID(response.json()["id"])
         outcome = db_session.query(LlmExtraction).filter_by(document_id=document_id).one()
         assert outcome.status == "succeeded"
+
+
+# --- Same-run dedup (task 3.1, 3.2; spec: Same-Extraction Duplicate Fields Are Deduplicated, Not Rejected) ---
+
+
+def test_dedupe_by_field_name_keeps_highest_confidence():
+    entries = [
+        {"field_name": "total", "value": "$42", "source_quote": "a", "confidence": 0.9},
+        {"field_name": "total", "value": "$41", "source_quote": "b", "confidence": 0.3},
+        {"field_name": "other", "value": "x", "source_quote": "c", "confidence": 0.5},
+    ]
+    deduped = llm_extraction._dedupe_by_field_name(entries)
+    by_field = {e["field_name"]: e for e in deduped}
+
+    assert len(deduped) == 2
+    assert by_field["total"]["value"] == "$42"
+    assert by_field["other"]["value"] == "x"
+
+
+def test_dedupe_by_field_name_no_collision_unaffected():
+    entries = [
+        {"field_name": "a", "value": "1", "source_quote": "x", "confidence": 0.5},
+        {"field_name": "b", "value": "2", "source_quote": "y", "confidence": 0.5},
+    ]
+    deduped = llm_extraction._dedupe_by_field_name(entries)
+    assert len(deduped) == 2
+
+
+def test_run_llm_extraction_dedupes_same_run_collision_and_succeeds(db_session, monkeypatch):
+    document = _make_document(db_session)
+    extraction = _make_extraction(
+        db_session, document, "Total: $42\nAlso Total: $41 written elsewhere"
+    )
+    raw_response = json.dumps(
+        {
+            "fields": [
+                {
+                    "field_name": "total",
+                    "value": "$42",
+                    "source_quote": "Total: $42",
+                    "confidence": 0.9,
+                },
+                {
+                    "field_name": "total",
+                    "value": "$41",
+                    "source_quote": "Total: $41",
+                    "confidence": 0.3,
+                },
+            ]
+        }
+    )
+    monkeypatch.setattr(llm_extraction.anthropic_client, "extract", lambda text: raw_response)
+
+    run_llm_extraction(document, extraction, db_session)
+
+    outcome = db_session.query(LlmExtraction).filter_by(document_id=document.id).one()
+    assert outcome.status == "succeeded"
+    assert outcome.failure_reason is None
+
+    results = (
+        db_session.query(ExtractionResult)
+        .filter_by(document_id=document.id, field_name="total")
+        .all()
+    )
+    assert len(results) == 1
+    assert results[0].field_value == "$42"
+    assert results[0].confidence == 0.9
+
+
+# --- DB-level uniqueness enforcement (task 4.1, 5.3; spec: One Record Per Document/Field Pair) ---
+
+
+def test_direct_duplicate_insert_rejected_by_database(db_session):
+    document = _make_document(db_session)
+    db_session.add(
+        ExtractionResult(
+            document_id=document.id,
+            field_name="total",
+            field_value="$42",
+            source_quote="Total: $42",
+            confidence=0.9,
+            needs_review=False,
+        )
+    )
+    db_session.commit()
+
+    db_session.add(
+        ExtractionResult(
+            document_id=document.id,
+            field_name="total",
+            field_value="$41",
+            source_quote="Total: $41",
+            confidence=0.3,
+            needs_review=False,
+        )
+    )
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
+# --- Index presence (task 4.2) ---
+
+
+def test_extraction_results_has_expected_unique_constraint_and_indexes():
+    inspector = inspect(engine)
+    index_names = {idx["name"] for idx in inspector.get_indexes("extraction_results")}
+    unique_constraint_names = {
+        uc["name"] for uc in inspector.get_unique_constraints("extraction_results")
+    }
+
+    assert "ix_extraction_results_field_name" in index_names
+    assert "uq_extraction_results_document_id_field_name" in unique_constraint_names
+
+
+# --- Hard constraint: free-form storage, no document-type-specific columns (task 5.3) ---
+
+
+def test_extraction_results_columns_remain_free_form_after_uniqueness_migration():
+    columns = {c.name for c in ExtractionResult.__table__.columns}
+    assert columns == {
+        "id",
+        "document_id",
+        "field_name",
+        "field_value",
+        "source_quote",
+        "created_at",
+        "confidence",
+        "needs_review",
+    }
