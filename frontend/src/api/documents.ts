@@ -198,3 +198,22 @@ export async function getFieldOccurrences(
   const error = (await response.json()) as UploadError;
   return { ok: false, detail: error.detail ?? "Could not load field occurrences." };
 }
+
+export async function getDocumentsByType(
+  type: string,
+  { limit, offset }: { limit: number; offset: number },
+): Promise<DocumentsResult> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  const response = await fetch(
+    `${API_BASE_URL}/document-types/${encodeURIComponent(type)}/documents?${params}`,
+    { headers: authHeaders() },
+  );
+
+  if (response.ok) {
+    const page = (await response.json()) as PaginatedResponse<DocumentOut>;
+    return { ok: true, page };
+  }
+
+  const error = (await response.json()) as UploadError;
+  return { ok: false, detail: error.detail ?? "Could not load documents." };
+}
