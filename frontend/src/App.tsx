@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { getStoredApiKey } from "./apiKey";
 import { DocumentDetailPage } from "./DocumentDetailPage";
+import { DocumentLibraryPage } from "./DocumentLibraryPage";
 import { RegistrationForm } from "./RegistrationForm";
 import { UploadPage } from "./UploadPage";
 
@@ -15,8 +16,10 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<UploadPage onUnauthorized={() => setHasKey(false)} />} />
+        <Route path="/" element={<DocumentLibraryPage />} />
+        <Route path="/upload" element={<UploadPage onUnauthorized={() => setHasKey(false)} />} />
         <Route path="/documents/:id" element={<DocumentDetailPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

@@ -76,6 +76,32 @@ export async function uploadDocument(file: File): Promise<UploadResult> {
   };
 }
 
+export interface PaginatedResponse<T> {
+  items: T[];
+  limit: number;
+  offset: number;
+  total: number;
+}
+
+export type DocumentsResult =
+  | { ok: true; page: PaginatedResponse<DocumentOut> }
+  | { ok: false; detail: string };
+
+export async function getDocuments(limit: number, offset: number): Promise<DocumentsResult> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  const response = await fetch(`${API_BASE_URL}/documents?${params}`, {
+    headers: authHeaders(),
+  });
+
+  if (response.ok) {
+    const page = (await response.json()) as PaginatedResponse<DocumentOut>;
+    return { ok: true, page };
+  }
+
+  const error = (await response.json()) as UploadError;
+  return { ok: false, detail: error.detail ?? "Could not load documents." };
+}
+
 export type DocumentResult =
   | { ok: true; document: DocumentOut }
   | { ok: false; detail: string };
