@@ -1,7 +1,7 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -12,10 +12,16 @@ from app.extraction import run_extraction
 from app.formats import detect_format
 from app.llm_extraction import run_llm_extraction
 from app.models import Document, DocumentExtraction, ExtractionResult, User
-from app.schemas import DocumentOut, ExtractionOut, FieldResultOut
+from app.schemas import DocumentOut, ExtractionOut, FieldResultOut, PaginatedResponse
 from app.storage import storage_client
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+# Duplicated from query.py's identical constants rather than imported, to
+# avoid a circular import (query.py already imports `_document_out` from
+# this module).
+DEFAULT_PAGE_LIMIT = 50
+MAX_PAGE_LIMIT = 200
 
 
 def _document_out(document: Document, db: Session) -> DocumentOut:
@@ -32,6 +38,30 @@ def _document_out(document: Document, db: Session) -> DocumentOut:
         extraction_status=extraction.status,
         extraction_failure_reason=extraction.failure_reason,
         duplicate_of_id=document.duplicate_of_id,
+    )
+
+
+@router.get("", response_model=PaginatedResponse[DocumentOut])
+def list_documents(
+    limit: int = Query(DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PaginatedResponse[DocumentOut]:
+    base_stmt = select(Document).where(Document.owner_id == current_user.id)
+
+    total = db.execute(select(func.count()).select_from(base_stmt.subquery())).scalar_one()
+    documents = (
+        db.execute(base_stmt.order_by(Document.created_at.desc()).limit(limit).offset(offset))
+        .scalars()
+        .all()
+    )
+
+    return PaginatedResponse(
+        items=[_document_out(document, db) for document in documents],
+        limit=limit,
+        offset=offset,
+        total=total,
     )
 
 
