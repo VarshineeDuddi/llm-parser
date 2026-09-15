@@ -76,6 +76,76 @@ export async function uploadDocument(file: File): Promise<UploadResult> {
   };
 }
 
+export interface PaginatedResponse<T> {
+  items: T[];
+  limit: number;
+  offset: number;
+  total: number;
+}
+
+export type DocumentsResult =
+  | { ok: true; page: PaginatedResponse<DocumentOut> }
+  | { ok: false; detail: string };
+
+export async function getDocuments(limit: number, offset: number): Promise<DocumentsResult> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  const response = await fetch(`${API_BASE_URL}/documents?${params}`, {
+    headers: authHeaders(),
+  });
+
+  if (response.ok) {
+    const page = (await response.json()) as PaginatedResponse<DocumentOut>;
+    return { ok: true, page };
+  }
+
+  const error = (await response.json()) as UploadError;
+  return { ok: false, detail: error.detail ?? "Could not load documents." };
+}
+
+export type DocumentResult =
+  | { ok: true; document: DocumentOut }
+  | { ok: false; detail: string };
+
+export async function getDocument(documentId: string): Promise<DocumentResult> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}`, {
+    headers: authHeaders(),
+  });
+
+  if (response.ok) {
+    const document = (await response.json()) as DocumentOut;
+    return { ok: true, document };
+  }
+
+  const error = (await response.json()) as UploadError;
+  return { ok: false, detail: error.detail ?? "Could not load document." };
+}
+
+export interface ExtractionOut {
+  document_id: string;
+  status: string;
+  extracted_text: string | null;
+  failure_reason: string | null;
+  extracted_at: string;
+}
+
+export type ExtractionResult =
+  | { ok: true; extraction: ExtractionOut }
+  | { ok: false; detail: string };
+
+export async function getExtraction(documentId: string): Promise<ExtractionResult> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/extraction`, {
+    headers: authHeaders(),
+  });
+
+  if (response.ok) {
+    const extraction = (await response.json()) as ExtractionOut;
+    return { ok: true, extraction };
+  }
+
+  const error = (await response.json()) as UploadError;
+  return { ok: false, detail: error.detail ?? "Could not load extraction." };
+}
+
 export interface FieldResultOut {
   field_name: string;
   field_value: string;
