@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UploadPage } from "./UploadPage";
@@ -184,5 +184,119 @@ describe("UploadPage fields display", () => {
 
     await waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(1));
     expect(mockedGetFields).not.toHaveBeenCalled();
+  });
+
+  // --- Task 1.1: drag-and-drop ---
+
+  it("selects a file dropped onto the upload area", () => {
+    renderUploadPage();
+
+    const file = new File(["hello"], "dropped.txt", { type: "text/plain" });
+    const dropZone = screen.getByText("Choose file or drag it here");
+
+    fireEvent.drop(dropZone, { dataTransfer: { files: [file] } });
+
+    expect(screen.getByText("dropped.txt")).toBeInTheDocument();
+  });
+
+  // --- Task 2.1: progress indicator ---
+
+  it("shows a progress indicator while submitting and hides it once resolved", async () => {
+    let resolveUpload!: (value: unknown) => void;
+    mockedUpload.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveUpload = resolve;
+        }),
+    );
+
+    renderUploadPage();
+    await chooseAndUpload();
+
+    expect(await screen.findByRole("progressbar")).toBeInTheDocument();
+
+    mockedGetFields.mockResolvedValue({ ok: true, fields: [] });
+    resolveUpload({ ok: true, document: makeDocument() });
+
+    await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument());
+  });
+
+  // --- Task 3.1: ordered result feed ---
+
+  it("renders an ordered result feed for a successful response", async () => {
+    mockedUpload.mockResolvedValue({
+      ok: true,
+      document: makeDocument({ duplicate_of_id: "original-doc-id" }),
+    });
+    mockedGetFields.mockResolvedValue({
+      ok: true,
+      fields: [
+        {
+          field_name: "a",
+          field_value: "1",
+          confidence: 0.9,
+          needs_review: false,
+          created_at: "2026-01-01T00:00:00Z",
+        },
+        {
+          field_name: "b",
+          field_value: "2",
+          confidence: 0.2,
+          needs_review: true,
+          created_at: "2026-01-01T00:00:00Z",
+        },
+      ],
+    });
+
+    renderUploadPage();
+    await chooseAndUpload();
+
+    const feed = await screen.findByRole("list", { name: /upload result feed/i });
+    const items = within(feed)
+      .getAllByRole("listitem")
+      .map((item) => item.textContent);
+
+    expect(items[0]).toMatch(/uploaded successfully/i);
+    expect(items[1]).toMatch(/text extraction succeeded/i);
+    expect(items[2]).toMatch(/duplicate of document original-doc-id/i);
+    expect(items[3]).toMatch(/2 fields extracted, 1 needing review/i);
+  });
+
+  // --- Task 3.2: failure cases render as a clear, ordered explanation ---
+
+  it("shows an explanation instead of a bare error when upload is rejected", async () => {
+    mockedUpload.mockResolvedValue({
+      ok: false,
+      detail: "The uploaded file is empty.",
+      unauthorized: false,
+    });
+
+    renderUploadPage();
+    await chooseAndUpload();
+
+    expect(await screen.findByText("The uploaded file is empty.")).toBeInTheDocument();
+  });
+
+  it("shows extraction failure as an ordered feed step, not a bare error", async () => {
+    mockedUpload.mockResolvedValue({
+      ok: true,
+      document: makeDocument({
+        extraction_status: "failed",
+        extraction_failure_reason: "No text layer was found in the document.",
+      }),
+    });
+    mockedGetFields.mockResolvedValue({ ok: true, fields: [] });
+
+    renderUploadPage();
+    await chooseAndUpload();
+
+    const feed = await screen.findByRole("list", { name: /upload result feed/i });
+    const items = within(feed)
+      .getAllByRole("listitem")
+      .map((item) => item.textContent);
+
+    expect(items[0]).toMatch(/uploaded successfully/i);
+    expect(items[1]).toMatch(/text extraction failed: no text layer was found in the document\./i);
+    expect(items[2]).toMatch(/no fields are available because text extraction failed/i);
   });
 });
