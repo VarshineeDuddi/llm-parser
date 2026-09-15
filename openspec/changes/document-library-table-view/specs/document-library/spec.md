@@ -7,20 +7,34 @@ anything up.
 ## ADDED Requirements
 
 ### Requirement: List All Uploaded Documents
-The system SHALL allow retrieving a list of all uploaded documents,
-including each document's filename, format, size, upload date, status,
-extraction status, and duplicate flag.
+The system SHALL allow an authenticated user to retrieve a list of their
+own uploaded documents, including each document's filename, format,
+size, upload date, status, extraction status, and duplicate flag. This
+list SHALL only include documents owned by the requesting user,
+consistent with every other document/extraction endpoint.
 
 #### Scenario: Documents are listed
-- **WHEN** a caller requests the document list and at least one document
-  has been uploaded
-- **THEN** the system returns each uploaded document's filename, format,
-  size, upload date, status, extraction status, and duplicate flag
+- **WHEN** an authenticated user requests the document list and has
+  uploaded at least one document
+- **THEN** the system returns each of that user's uploaded documents'
+  filename, format, size, upload date, status, extraction status, and
+  duplicate flag
 
 #### Scenario: Empty result when nothing has been uploaded
-- **WHEN** a caller requests the document list and no document has been
-  uploaded
+- **WHEN** an authenticated user requests the document list and has not
+  uploaded any document
 - **THEN** the system returns an empty result, not an error
+
+#### Scenario: Another user's documents are excluded
+- **WHEN** an authenticated user requests the document list, and
+  documents exist that were uploaded by a different user
+- **THEN** the returned list never includes a document owned by a
+  different user
+
+#### Scenario: Unauthenticated request is rejected
+- **WHEN** a request to list documents is made with no valid API key
+- **THEN** the system rejects the request with an authentication-failure
+  response and returns no document data
 
 ### Requirement: Document List Is Paginated
 The system SHALL support pagination for the document list, so a caller

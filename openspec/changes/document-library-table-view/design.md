@@ -1,12 +1,19 @@
 ## Context
 
-See proposal.md - Why. Relevant current state: `DocumentOut` (backend
-schema) already carries every field this story's table needs (`id`,
-`status`, `original_filename`, `format`, `size_bytes`, `created_at`,
-`extraction_status`, `extraction_failure_reason`, `duplicate_of_id`).
-`PaginatedResponse[T]` (3.2) already provides the pagination envelope
-this story needs. `frontend/src/App.tsx` renders `UploadPage` directly
-today — no router, no other page exists.
+See proposal.md - Why, including the Auth note. Relevant current state
+(now including 4.1, merged after this design was first drafted):
+`DocumentOut` (backend schema) already carries every field this story's
+table needs (`id`, `status`, `original_filename`, `format`,
+`size_bytes`, `created_at`, `extraction_status`, `extraction_failure_
+reason`, `duplicate_of_id`). `PaginatedResponse[T]` (3.2) already
+provides the pagination envelope this story needs. Every existing
+document/extraction endpoint now requires authentication via
+`get_current_user` (`backend/app/auth.py`) and filters by
+`Document.owner_id == current_user.id`; the frontend's `authHeaders()`
+helper (`frontend/src/api/documents.ts`) attaches the stored key to
+every request, and `RegistrationForm.tsx` handles the no-key-yet case.
+`frontend/src/App.tsx` renders `UploadPage` directly today — no router,
+no other page exists.
 
 ## Goals / Non-Goals
 
@@ -39,6 +46,17 @@ pattern as 3.2's existing paginated endpoints.
   `GET /documents/{id}`, and reusing it avoids maintaining two response
   shapes for materially the same data ("reuse existing abstractions").
 
+**1a. Authentication and ownership scoping reuse 4.1's existing
+mechanism exactly — `Depends(get_current_user)` plus a
+`.where(Document.owner_id == current_user.id)` filter, the same pattern
+3.2's endpoints already use post-4.1.**
+No new judgment call: 4.1's own `access-scoping` spec already states its
+cross-document scoping requirement covers "any future such query," and
+this list endpoint is exactly that case.
+- Alternative considered: none seriously — deviating from the
+  established pattern (e.g., a different auth check) would be
+  inconsistent with every sibling endpoint for no benefit.
+
 **2. Introduce `react-router-dom` now, in this story — not deferred
 again.**
 3.3 deliberately avoided adding a router, scoping itself to inline
@@ -59,6 +77,19 @@ builds on rather than each story inventing its own ad hoc navigation.
   doesn't implement what renders there beyond, at most, a placeholder).
   The upload flow becomes reachable from the library (e.g., `/upload`),
   not the default route.
+
+**2a. The existing "no key stored yet" registration gate (4.1's
+`RegistrationForm.tsx`) sits above routing, not per-route.**
+Since every route now needs an authenticated fetch, a logged-out user
+sees the registration prompt regardless of which route they land on,
+before that route's own data-fetching runs — not a separate "please log
+in" state duplicated in the library and the upload page independently.
+- Alternative considered: let each page handle its own "not
+  authenticated" state independently (matching how `uploadDocument`
+  today returns `unauthorized: true` on a 401). Rejected for the
+  library's default-view role specifically — gating at the router level
+  means a logged-out user's very first screen is the registration
+  prompt, not a library that immediately fails to load.
 
 **3. Default sort: newest first (`created_at` descending), no
 client-configurable sort in this story.**
