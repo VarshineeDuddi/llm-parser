@@ -217,3 +217,24 @@ export async function getDocumentsByType(
   const error = (await response.json()) as UploadError;
   return { ok: false, detail: error.detail ?? "Could not load documents." };
 }
+
+export async function getNeedsReviewQueue({
+  limit,
+  offset,
+}: {
+  limit: number;
+  offset: number;
+}): Promise<FieldOccurrencesResult> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  const response = await fetch(`${API_BASE_URL}/needs-review?${params}`, {
+    headers: authHeaders(),
+  });
+
+  if (response.ok) {
+    const page = (await response.json()) as PaginatedResponse<FieldResultWithDocumentOut>;
+    return { ok: true, page };
+  }
+
+  const error = (await response.json()) as UploadError;
+  return { ok: false, detail: error.detail ?? "Could not load the needs-review queue." };
+}

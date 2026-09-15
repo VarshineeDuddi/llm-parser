@@ -84,3 +84,29 @@ def get_documents_by_type(
         offset=offset,
         total=total,
     )
+
+
+@router.get("/needs-review", response_model=PaginatedResponse[FieldResultWithDocumentOut])
+def get_needs_review_queue(
+    limit: int = Query(DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PaginatedResponse[FieldResultWithDocumentOut]:
+    base_stmt = (
+        select(ExtractionResult)
+        .join(Document, Document.id == ExtractionResult.document_id)
+        .where(
+            ExtractionResult.needs_review.is_(True),
+            Document.owner_id == current_user.id,
+        )
+    )
+
+    total = db.execute(select(func.count()).select_from(base_stmt.subquery())).scalar_one()
+    results = (
+        db.execute(base_stmt.order_by(ExtractionResult.created_at.asc()).limit(limit).offset(offset))
+        .scalars()
+        .all()
+    )
+
+    return PaginatedResponse(items=list(results), limit=limit, offset=offset, total=total)

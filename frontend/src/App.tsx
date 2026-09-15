@@ -5,6 +5,7 @@ import { DocumentDetailPage } from "./DocumentDetailPage";
 import { DocumentLibraryPage } from "./DocumentLibraryPage";
 import { DocumentTypeBrowserPage } from "./DocumentTypeBrowserPage";
 import { FieldExplorerPage } from "./FieldExplorerPage";
+import { NeedsReviewQueuePage } from "./NeedsReviewQueuePage";
 import { RegistrationForm } from "./RegistrationForm";
 import { UploadPage } from "./UploadPage";
 
@@ -23,6 +24,7 @@ function App() {
         <Route path="/documents/:id" element={<DocumentDetailPage />} />
         <Route path="/fields" element={<FieldExplorerPage />} />
         <Route path="/document-types" element={<DocumentTypeBrowserPage />} />
+        <Route path="/needs-review" element={<NeedsReviewQueuePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
