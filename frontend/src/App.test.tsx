@@ -45,10 +45,13 @@ describe("App routing", () => {
     render(<App />);
 
     expect(await screen.findByText("Document Library")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Library" })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("link", { name: /upload a document/i }));
+    await userEvent.click(screen.getByRole("link", { name: "Upload" }));
 
     expect(await screen.findByText("Upload a document")).toBeInTheDocument();
+    // Task 2.2: the shared nav persists on a page that had none of its own before.
+    expect(screen.getByRole("link", { name: "Needs Review" })).toBeInTheDocument();
   });
 
   it("shows the registration form when no key is stored, regardless of route", () => {

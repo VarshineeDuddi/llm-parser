@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
+import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -13,6 +15,7 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { getDocumentsByType, type DocumentOut } from "./api/documents";
+import { formatFileSize, formatStatusLabel, statusChipColor } from "./formatting";
 
 const PAGE_SIZE = 10;
 
@@ -23,9 +26,11 @@ export function DocumentTypeBrowserPage() {
   const [documents, setDocuments] = useState<DocumentOut[] | null>(null);
   const [total, setTotal] = useState(0);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const runSearch = (type: string, searchOffset: number) => {
     setErrorDetail(null);
+    setLoading(true);
     getDocumentsByType(type, { limit: PAGE_SIZE, offset: searchOffset }).then((result) => {
       if (result.ok) {
         setDocuments(result.page.items);
@@ -34,6 +39,7 @@ export function DocumentTypeBrowserPage() {
         setDocuments(null);
         setErrorDetail(result.detail);
       }
+      setLoading(false);
     });
   };
 
@@ -75,6 +81,14 @@ export function DocumentTypeBrowserPage() {
 
       {errorDetail && <Alert severity="error">{errorDetail}</Alert>}
 
+      {loading && documents === null && (
+        <Stack spacing={1} aria-label="Loading document type results">
+          <Skeleton variant="rectangular" height={40} />
+          <Skeleton variant="rectangular" height={40} />
+          <Skeleton variant="rectangular" height={40} />
+        </Stack>
+      )}
+
       {documents !== null && documents.length === 0 && (
         <Alert severity="info">No documents were found with this type.</Alert>
       )}
@@ -99,9 +113,21 @@ export function DocumentTypeBrowserPage() {
                       <Link to={`/documents/${document.id}`}>{document.original_filename}</Link>
                     </TableCell>
                     <TableCell>{document.format}</TableCell>
-                    <TableCell>{document.size_bytes}</TableCell>
-                    <TableCell>{document.status}</TableCell>
-                    <TableCell>{document.extraction_status}</TableCell>
+                    <TableCell>{formatFileSize(document.size_bytes)}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={formatStatusLabel(document.status)}
+                        color={statusChipColor(document.status)}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={formatStatusLabel(document.extraction_status)}
+                        color={statusChipColor(document.extraction_status)}
+                        size="small"
+                      />
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

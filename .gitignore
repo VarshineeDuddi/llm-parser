@@ -18,3 +18,4 @@ frontend/.env.local
 
 # Claude local settings
 .claude/settings.local.json
+.claude/launch.json
