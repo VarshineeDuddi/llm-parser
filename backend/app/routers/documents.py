@@ -10,8 +10,8 @@ from app.duplicates import run_duplicate_detection
 from app.extraction import run_extraction
 from app.formats import detect_format
 from app.llm_extraction import run_llm_extraction
-from app.models import Document, DocumentExtraction
-from app.schemas import DocumentOut, ExtractionOut
+from app.models import Document, DocumentExtraction, ExtractionResult
+from app.schemas import DocumentOut, ExtractionOut, FieldResultOut
 from app.storage import storage_client
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -88,6 +88,22 @@ def get_document(document_id: uuid.UUID, db: Session = Depends(get_db)) -> Docum
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found.")
     return _document_out(document, db)
+
+
+@router.get("/{document_id}/fields", response_model=list[FieldResultOut])
+def get_document_fields(
+    document_id: uuid.UUID,
+    needs_review: bool | None = None,
+    db: Session = Depends(get_db),
+) -> list[ExtractionResult]:
+    document = db.get(Document, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    stmt = select(ExtractionResult).where(ExtractionResult.document_id == document_id)
+    if needs_review is not None:
+        stmt = stmt.where(ExtractionResult.needs_review == needs_review)
+    return list(db.execute(stmt).scalars().all())
 
 
 @router.get("/{document_id}/extraction", response_model=ExtractionOut)
