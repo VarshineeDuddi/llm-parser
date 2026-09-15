@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -53,7 +53,9 @@ class ExtractionResult(Base):
     classified document type as a row with the reserved field name
     `_document_type` -- never a document-type-specific column. Every row
     carries a `source_quote` verified against the document's extracted
-    text before being persisted."""
+    text before being persisted, plus a confidence score and a
+    `needs_review` flag computed for entries that already passed that
+    grounding check."""
 
     __tablename__ = "extraction_results"
 
@@ -63,6 +65,8 @@ class ExtractionResult(Base):
     field_value: Mapped[str] = mapped_column(Text)
     source_quote: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    confidence: Mapped[float | None] = mapped_column(Float, default=None)
+    needs_review: Mapped[bool | None] = mapped_column(Boolean, default=False)
 
 
 class LlmExtraction(Base):

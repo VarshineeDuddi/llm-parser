@@ -14,7 +14,20 @@ from app.models import Document, DocumentExtraction, ExtractionResult, LlmExtrac
 
 DOCUMENT_TYPE_FIELD_NAME = "_document_type"
 
-_REQUIRED_ENTRY_KEYS = {"field_name", "value", "source_quote"}
+_REQUIRED_STRING_KEYS = {"field_name", "value", "source_quote"}
+
+# A grounded match that only holds up after whitespace normalization (not an
+# exact substring) is capped at this ceiling, regardless of what the model
+# reported.
+NORMALIZED_ONLY_MATCH_CAP = 0.6
+
+# A grounded match whose source_quote appears at more than one distinct
+# location in the document's text is capped at this ceiling.
+AMBIGUOUS_LOCATION_CAP = 0.5
+
+# A record's final confidence (after mechanical adjustment) below this value
+# is flagged for human review.
+CONFIDENCE_THRESHOLD = 0.7
 
 
 class InvalidLLMResponseError(Exception):
@@ -33,10 +46,11 @@ def _strip_code_fence(text: str) -> str:
     return match.group(1) if match else text
 
 
-def parse_response(raw_response: str) -> list[dict[str, str]]:
-    """Validate and extract the list of {field_name, value, source_quote}
-    entries from the LLM's raw text response. Raises InvalidLLMResponseError
-    on non-JSON input or a response missing the required keys."""
+def parse_response(raw_response: str) -> list[dict[str, str | float]]:
+    """Validate and extract the list of {field_name, value, source_quote,
+    confidence} entries from the LLM's raw text response. Raises
+    InvalidLLMResponseError on non-JSON input, a response missing the
+    required keys, or a missing/non-numeric confidence."""
     try:
         parsed = json.loads(_strip_code_fence(raw_response))
     except json.JSONDecodeError as exc:
@@ -49,13 +63,22 @@ def parse_response(raw_response: str) -> list[dict[str, str]]:
     if not isinstance(fields, list):
         raise InvalidLLMResponseError("'fields' must be a list.")
 
-    entries = []
+    entries: list[dict[str, str | float]] = []
     for entry in fields:
-        if not isinstance(entry, dict) or not _REQUIRED_ENTRY_KEYS.issubset(entry):
+        if not isinstance(entry, dict) or not _REQUIRED_STRING_KEYS.issubset(entry):
             raise InvalidLLMResponseError(
                 "Each field entry must have field_name, value, and source_quote."
             )
-        entries.append({key: str(entry[key]) for key in _REQUIRED_ENTRY_KEYS})
+        confidence = entry.get("confidence")
+        if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
+            raise InvalidLLMResponseError(
+                "Each field entry must have a numeric confidence."
+            )
+        parsed_entry: dict[str, str | float] = {
+            key: str(entry[key]) for key in _REQUIRED_STRING_KEYS
+        }
+        parsed_entry["confidence"] = float(confidence)
+        entries.append(parsed_entry)
     return entries
 
 
@@ -69,6 +92,40 @@ def is_grounded(source_quote: str, extracted_text: str) -> bool:
     if not source_quote:
         return False
     return _normalize(source_quote) in _normalize(extracted_text)
+
+
+def _cap_for_normalized_only_match(
+    source_quote: str, extracted_text: str, confidence: float
+) -> float:
+    """Cap `confidence` when `source_quote` matched `extracted_text` only
+    after whitespace normalization, not as an exact substring. Assumes the
+    entry has already passed `is_grounded`. Never raises confidence."""
+    if source_quote in extracted_text:
+        return confidence
+    return min(confidence, NORMALIZED_ONLY_MATCH_CAP)
+
+
+def _cap_for_ambiguous_location(
+    source_quote: str, extracted_text: str, confidence: float
+) -> float:
+    """Cap `confidence` when `source_quote` corresponds to more than one
+    distinct (whitespace-normalized) location in `extracted_text`. Never
+    raises confidence."""
+    normalized_quote = _normalize(source_quote)
+    normalized_text = _normalize(extracted_text)
+    if normalized_text.count(normalized_quote) > 1:
+        return min(confidence, AMBIGUOUS_LOCATION_CAP)
+    return confidence
+
+
+def compute_confidence(source_quote: str, extracted_text: str, model_confidence: float) -> float:
+    """Combine the model-reported confidence with the mechanical caps above
+    into a single final confidence value. Only ever lowers the model's
+    figure -- the lowest applicable cap wins."""
+    confidence = model_confidence
+    confidence = _cap_for_normalized_only_match(source_quote, extracted_text, confidence)
+    confidence = _cap_for_ambiguous_location(source_quote, extracted_text, confidence)
+    return confidence
 
 
 def run_llm_extraction(document: Document, extraction: DocumentExtraction, db: Session) -> None:
@@ -92,13 +149,19 @@ def run_llm_extraction(document: Document, extraction: DocumentExtraction, db: S
         return
 
     for entry in entries:
-        if is_grounded(entry["source_quote"], extraction.extracted_text):
+        source_quote = entry["source_quote"]
+        if is_grounded(source_quote, extraction.extracted_text):
+            confidence = compute_confidence(
+                source_quote, extraction.extracted_text, entry["confidence"]
+            )
             db.add(
                 ExtractionResult(
                     document_id=document.id,
                     field_name=entry["field_name"],
                     field_value=entry["value"],
-                    source_quote=entry["source_quote"],
+                    source_quote=source_quote,
+                    confidence=confidence,
+                    needs_review=confidence < CONFIDENCE_THRESHOLD,
                 )
             )
 
