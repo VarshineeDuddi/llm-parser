@@ -11,6 +11,22 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class User(Base):
+    """A registered caller identity. Only the API key's SHA-256 hash is ever
+    stored -- the raw key is returned once at registration and is not
+    persisted anywhere (access-scoping design.md Decision 2: an opaque,
+    high-entropy random token has no low-entropy weakness for a slow
+    password-hashing library to defend against, unlike a human-chosen
+    password)."""
+
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(256))
+    api_key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
 class Document(Base):
     """Metadata for one uploaded source file. Shape must not vary by document
     format/type — no per-format columns here, ever."""
@@ -26,6 +42,9 @@ class Document(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     duplicate_of_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("documents.id"), default=None
+    )
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id"), default=None
     )
 
 

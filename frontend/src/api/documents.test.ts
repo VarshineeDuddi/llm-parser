@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { getDocumentFields } from "./documents";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearStoredApiKey, setStoredApiKey } from "../apiKey";
+import { getDocumentFields, registerUser, uploadDocument } from "./documents";
 
 describe("getDocumentFields", () => {
   afterEach(() => {
@@ -46,6 +47,97 @@ describe("getDocumentFields", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.detail).toBe("Document not found.");
+    }
+  });
+});
+
+describe("registerUser", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns the issued user, including the raw api key, on success", async () => {
+    const body = { id: "user-1", name: "Alice", api_key: "raw-key-abc" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => body }),
+    );
+
+    const result = await registerUser("Alice");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.user).toEqual(body);
+    }
+  });
+});
+
+describe("uploadDocument", () => {
+  beforeEach(() => {
+    clearStoredApiKey();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearStoredApiKey();
+  });
+
+  function makeDocumentResponse() {
+    return {
+      ok: true,
+      json: async () => ({
+        id: "doc-1",
+        status: "received",
+        original_filename: "a.txt",
+        format: "txt",
+        size_bytes: 5,
+        created_at: "2026-01-01T00:00:00Z",
+        extraction_status: "succeeded",
+        extraction_failure_reason: null,
+        duplicate_of_id: null,
+      }),
+    };
+  }
+
+  it("attaches the stored API key via the Authorization header (task 6.2)", async () => {
+    setStoredApiKey("stored-key-123");
+    const fetchMock = vi.fn().mockResolvedValue(makeDocumentResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const file = new File(["hello"], "a.txt", { type: "text/plain" });
+    await uploadDocument(file);
+
+    const [, options] = fetchMock.mock.calls[0];
+    expect(options.headers).toEqual({ Authorization: "Bearer stored-key-123" });
+  });
+
+  it("sends no Authorization header when no key is stored", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeDocumentResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const file = new File(["hello"], "a.txt", { type: "text/plain" });
+    await uploadDocument(file);
+
+    const [, options] = fetchMock.mock.calls[0];
+    expect(options.headers).toEqual({});
+  });
+
+  it("marks a 401 response as unauthorized rather than a generic failure (task 6.3)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({ detail: "Missing or invalid API key." }),
+      }),
+    );
+
+    const file = new File(["hello"], "a.txt", { type: "text/plain" });
+    const result = await uploadDocument(file);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.unauthorized).toBe(true);
     }
   });
 });

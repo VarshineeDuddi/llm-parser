@@ -18,53 +18,58 @@ DOCX_BYTES = _zip_with_entry("word/document.xml")
 PPTX_BYTES = _zip_with_entry("ppt/presentation.xml")
 
 
-def test_upload_no_file_rejected(client):
-    response = client.post("/documents/upload")
+def test_upload_no_file_rejected(client, auth_headers):
+    response = client.post("/documents/upload", headers=auth_headers)
     assert response.status_code == 400
     assert response.json()["detail"] == "No file was provided."
 
 
-def test_upload_empty_file_rejected(client):
+def test_upload_empty_file_rejected(client, auth_headers):
     response = client.post(
         "/documents/upload",
         files={"file": ("empty.txt", b"", "text/plain")},
+        headers=auth_headers,
     )
     assert response.status_code == 400
     assert response.json()["detail"] == "The uploaded file is empty."
 
 
-def test_upload_unsupported_extension_rejected(client):
+def test_upload_unsupported_extension_rejected(client, auth_headers):
     response = client.post(
         "/documents/upload",
         files={"file": ("sample.xyz", b"whatever", "application/octet-stream")},
+        headers=auth_headers,
     )
     assert response.status_code == 400
     assert "Unsupported file format" in response.json()["detail"]
 
 
-def test_upload_extension_content_mismatch_rejected(client):
+def test_upload_extension_content_mismatch_rejected(client, auth_headers):
     response = client.post(
         "/documents/upload",
         files={"file": ("fake.pdf", TXT_BYTES, "application/pdf")},
+        headers=auth_headers,
     )
     assert response.status_code == 400
     assert "does not match its '.pdf' extension" in response.json()["detail"]
 
 
-def test_upload_oversize_file_rejected(client, monkeypatch):
+def test_upload_oversize_file_rejected(client, auth_headers, monkeypatch):
     monkeypatch.setattr("app.routers.documents.settings.max_upload_size_bytes", 10)
     response = client.post(
         "/documents/upload",
         files={"file": ("sample.txt", TXT_BYTES, "text/plain")},
+        headers=auth_headers,
     )
     assert response.status_code == 400
     assert "exceeds the maximum allowed size" in response.json()["detail"]
 
 
-def test_upload_txt_success(client):
+def test_upload_txt_success(client, auth_headers):
     response = client.post(
         "/documents/upload",
         files={"file": ("sample.txt", TXT_BYTES, "text/plain")},
+        headers=auth_headers,
     )
     assert response.status_code == 201
     body = response.json()
@@ -75,10 +80,11 @@ def test_upload_txt_success(client):
     assert "id" in body
 
 
-def test_upload_pdf_success_and_retrievable(client):
+def test_upload_pdf_success_and_retrievable(client, auth_headers):
     response = client.post(
         "/documents/upload",
         files={"file": ("sample.pdf", PDF_BYTES, "application/pdf")},
+        headers=auth_headers,
     )
     assert response.status_code == 201
     body = response.json()
@@ -87,7 +93,7 @@ def test_upload_pdf_success_and_retrievable(client):
     assert storage_client.get(stored_key) == PDF_BYTES
 
 
-def test_upload_docx_success(client):
+def test_upload_docx_success(client, auth_headers):
     response = client.post(
         "/documents/upload",
         files={
@@ -97,12 +103,13 @@ def test_upload_docx_success(client):
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             )
         },
+        headers=auth_headers,
     )
     assert response.status_code == 201
     assert response.json()["format"] == "docx"
 
 
-def test_upload_pptx_success(client):
+def test_upload_pptx_success(client, auth_headers):
     response = client.post(
         "/documents/upload",
         files={
@@ -112,6 +119,7 @@ def test_upload_pptx_success(client):
                 "application/vnd.openxmlformats-officedocument.presentationml.presentation",
             )
         },
+        headers=auth_headers,
     )
     assert response.status_code == 201
     assert response.json()["format"] == "pptx"

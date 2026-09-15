@@ -1,11 +1,4 @@
-## Purpose
-
-Lets a caller actually read back the field-level extraction results
-Story 3.1 made durable — by document, by field name across documents,
-and by classified document type — so the data those earlier stories
-computed is retrievable rather than write-only.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Retrieve All Fields For A Document
 The system SHALL allow retrieving every field-level record for a given
@@ -82,24 +75,3 @@ internally represented in storage.
   documents and a different user's documents
 - **THEN** the system returns only the requesting user's own matching
   documents, never a document owned by a different user
-
-### Requirement: Filter Retrieval To Records Needing Review
-The by-document and by-field retrieval SHALL support restricting results
-to only field-level records flagged as requiring human review.
-
-#### Scenario: Only flagged records are returned when the filter is applied
-- **WHEN** a caller requests a document's fields, or a field name's
-  occurrences, with the needs-review filter applied
-- **THEN** the system returns only records flagged as requiring human
-  review, omitting records that are not flagged
-
-### Requirement: Cross-Document Retrieval Is Paginated
-Retrieval by field name and by classified type SHALL support pagination,
-so a caller is never required to receive an unbounded result set in a
-single response.
-
-#### Scenario: Large result set is paginated
-- **WHEN** a field name or classified type matches more field-level
-  records or documents than fit in one page
-- **THEN** the system returns a bounded page of results along with a
-  way for the caller to retrieve the next page

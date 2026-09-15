@@ -53,3 +53,23 @@ def client(db_session, s3):
         yield TestClient(app)
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def register_user(client):
+    """Registers a fresh user and returns the raw registration response
+    (id, name, api_key) -- a convenience for tests that don't care about
+    registration itself, just need an authenticated caller."""
+
+    def _register(name: str = "Test User") -> dict:
+        response = client.post("/users", json={"name": name})
+        assert response.status_code == 201
+        return response.json()
+
+    return _register
+
+
+@pytest.fixture()
+def auth_headers(register_user):
+    user = register_user()
+    return {"Authorization": f"Bearer {user['api_key']}"}

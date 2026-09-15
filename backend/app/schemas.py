@@ -5,6 +5,20 @@ from typing import Generic, TypeVar
 from pydantic import BaseModel, ConfigDict
 
 
+class UserRegisterIn(BaseModel):
+    name: str
+
+
+class UserRegisterOut(BaseModel):
+    """The raw API key is included here only -- this is the one and only
+    response that ever returns it (spec: Raw key is never retrievable
+    again)."""
+
+    id: uuid.UUID
+    name: str
+    api_key: str
+
+
 class DocumentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

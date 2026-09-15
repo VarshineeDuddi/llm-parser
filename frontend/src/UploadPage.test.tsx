@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UploadPage } from "./UploadPage";
@@ -39,6 +39,10 @@ async function chooseAndUpload() {
   await userEvent.click(screen.getByRole("button", { name: /upload/i }));
 }
 
+function renderUploadPage(onUnauthorized: () => void = vi.fn()) {
+  return render(<UploadPage onUnauthorized={onUnauthorized} />);
+}
+
 beforeEach(() => {
   mockedUpload.mockReset();
   mockedGetFields.mockReset();
@@ -64,7 +68,7 @@ describe("UploadPage fields display", () => {
       ],
     });
 
-    render(<UploadPage />);
+    renderUploadPage();
     await chooseAndUpload();
 
     expect(await screen.findByText("total")).toBeInTheDocument();
@@ -93,7 +97,7 @@ describe("UploadPage fields display", () => {
       ],
     });
 
-    render(<UploadPage />);
+    renderUploadPage();
     await chooseAndUpload();
 
     expect(await screen.findByText("Needs review")).toBeInTheDocument();
@@ -107,7 +111,7 @@ describe("UploadPage fields display", () => {
     });
     mockedGetFields.mockResolvedValue({ ok: true, fields: [] });
 
-    render(<UploadPage />);
+    renderUploadPage();
     await chooseAndUpload();
 
     expect(
@@ -126,7 +130,7 @@ describe("UploadPage fields display", () => {
     });
     mockedGetFields.mockResolvedValue({ ok: true, fields: [] });
 
-    render(<UploadPage />);
+    renderUploadPage();
     await chooseAndUpload();
 
     expect(
@@ -150,7 +154,7 @@ describe("UploadPage fields display", () => {
       ],
     });
 
-    render(<UploadPage />);
+    renderUploadPage();
     await chooseAndUpload();
 
     expect(await screen.findByRole("button", { name: /export as csv/i })).toBeInTheDocument();
@@ -160,10 +164,25 @@ describe("UploadPage fields display", () => {
     mockedUpload.mockResolvedValue({ ok: true, document: makeDocument() });
     mockedGetFields.mockResolvedValue({ ok: true, fields: [] });
 
-    render(<UploadPage />);
+    renderUploadPage();
     await chooseAndUpload();
 
     await screen.findByText("No fields were extracted from this document.");
     expect(screen.queryByRole("button", { name: /export as csv/i })).not.toBeInTheDocument();
+  });
+
+  it("calls onUnauthorized on a 401 response instead of failing silently (task 6.3)", async () => {
+    mockedUpload.mockResolvedValue({
+      ok: false,
+      detail: "Missing or invalid API key.",
+      unauthorized: true,
+    });
+    const onUnauthorized = vi.fn();
+
+    renderUploadPage(onUnauthorized);
+    await chooseAndUpload();
+
+    await waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(1));
+    expect(mockedGetFields).not.toHaveBeenCalled();
   });
 });

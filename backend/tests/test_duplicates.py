@@ -72,10 +72,11 @@ def _make_stored_document(format: str, content: bytes) -> Document:
     )
 
 
-def _upload(client, filename: str, content: bytes, content_type: str = "text/plain"):
+def _upload(client, auth_headers, filename: str, content: bytes, content_type: str = "text/plain"):
     return client.post(
         "/documents/upload",
         files={"file": (filename, content, content_type)},
+        headers=auth_headers,
     )
 
 
@@ -173,9 +174,9 @@ def test_content_hash_left_null_after_failed_extraction(db_session, s3):
 # --- Upload integration: duplicate matching end-to-end (spec: Duplicate Detection by Content) ---
 
 
-def test_second_upload_of_matching_content_is_recorded_as_duplicate(client, db_session):
-    first = _upload(client, "sample.txt", b"identical content here")
-    second = _upload(client, "sample-again.txt", b"identical content here")
+def test_second_upload_of_matching_content_is_recorded_as_duplicate(client, auth_headers, db_session):
+    first = _upload(client, auth_headers, "sample.txt", b"identical content here")
+    second = _upload(client, auth_headers, "sample-again.txt", b"identical content here")
 
     assert first.status_code == 201
     assert second.status_code == 201
@@ -189,17 +190,17 @@ def test_second_upload_of_matching_content_is_recorded_as_duplicate(client, db_s
     assert second_body["duplicate_of_id"] == first_body["id"]
 
 
-def test_upload_with_unique_content_is_unaffected(client):
-    response = _upload(client, "sample.txt", b"nothing else matches this content")
+def test_upload_with_unique_content_is_unaffected(client, auth_headers):
+    response = _upload(client, auth_headers, "sample.txt", b"nothing else matches this content")
 
     body = response.json()
     assert body["status"] == "received"
     assert body["duplicate_of_id"] is None
 
 
-def test_original_document_unaffected_when_duplicate_uploaded(client, db_session):
-    first = _upload(client, "sample.txt", b"content to be duplicated")
-    _upload(client, "sample-copy.txt", b"content to be duplicated")
+def test_original_document_unaffected_when_duplicate_uploaded(client, auth_headers, db_session):
+    first = _upload(client, auth_headers, "sample.txt", b"content to be duplicated")
+    _upload(client, auth_headers, "sample-copy.txt", b"content to be duplicated")
 
     first_id = first.json()["id"]
     original = db_session.get(Document, uuid.UUID(first_id))
@@ -208,10 +209,10 @@ def test_original_document_unaffected_when_duplicate_uploaded(client, db_session
     assert original.duplicate_of_id is None
 
 
-def test_multiple_duplicates_of_same_original_do_not_affect_it(client, db_session):
-    original_response = _upload(client, "sample.txt", b"shared content across many uploads")
-    dup_one = _upload(client, "sample-copy1.txt", b"shared content across many uploads")
-    dup_two = _upload(client, "sample-copy2.txt", b"shared content across many uploads")
+def test_multiple_duplicates_of_same_original_do_not_affect_it(client, auth_headers, db_session):
+    original_response = _upload(client, auth_headers, "sample.txt", b"shared content across many uploads")
+    dup_one = _upload(client, auth_headers, "sample-copy1.txt", b"shared content across many uploads")
+    dup_two = _upload(client, auth_headers, "sample-copy2.txt", b"shared content across many uploads")
 
     original_id = original_response.json()["id"]
 
@@ -225,9 +226,9 @@ def test_multiple_duplicates_of_same_original_do_not_affect_it(client, db_sessio
     assert original.duplicate_of_id is None
 
 
-def test_failed_extraction_document_is_not_compared_and_not_matched(client, db_session):
-    first = _upload(client, "scanned1.pdf", BLANK_PDF, "application/pdf")
-    second = _upload(client, "scanned2.pdf", BLANK_PDF, "application/pdf")
+def test_failed_extraction_document_is_not_compared_and_not_matched(client, auth_headers, db_session):
+    first = _upload(client, auth_headers, "scanned1.pdf", BLANK_PDF, "application/pdf")
+    second = _upload(client, auth_headers, "scanned2.pdf", BLANK_PDF, "application/pdf")
 
     first_body = first.json()
     second_body = second.json()
@@ -244,12 +245,12 @@ def test_failed_extraction_document_is_not_compared_and_not_matched(client, db_s
 # --- Response contract & document retrieval (spec: Duplicate Status Visibility) ---
 
 
-def test_get_document_shows_duplicate_status_and_original_reference(client):
-    first = _upload(client, "sample.txt", b"content for retrieval test")
-    second = _upload(client, "sample-copy.txt", b"content for retrieval test")
+def test_get_document_shows_duplicate_status_and_original_reference(client, auth_headers):
+    first = _upload(client, auth_headers, "sample.txt", b"content for retrieval test")
+    second = _upload(client, auth_headers, "sample-copy.txt", b"content for retrieval test")
     second_id = second.json()["id"]
 
-    response = client.get(f"/documents/{second_id}")
+    response = client.get(f"/documents/{second_id}", headers=auth_headers)
 
     assert response.status_code == 200
     body = response.json()
@@ -257,11 +258,11 @@ def test_get_document_shows_duplicate_status_and_original_reference(client):
     assert body["duplicate_of_id"] == first.json()["id"]
 
 
-def test_get_document_shows_no_duplicate_reference_for_unique_content(client):
-    response = _upload(client, "sample.txt", b"one-of-a-kind content")
+def test_get_document_shows_no_duplicate_reference_for_unique_content(client, auth_headers):
+    response = _upload(client, auth_headers, "sample.txt", b"one-of-a-kind content")
     document_id = response.json()["id"]
 
-    get_response = client.get(f"/documents/{document_id}")
+    get_response = client.get(f"/documents/{document_id}", headers=auth_headers)
 
     assert get_response.status_code == 200
     body = get_response.json()
@@ -269,6 +270,6 @@ def test_get_document_shows_no_duplicate_reference_for_unique_content(client):
     assert body["duplicate_of_id"] is None
 
 
-def test_get_document_404_for_unknown_id(client):
-    response = client.get(f"/documents/{uuid.uuid4()}")
+def test_get_document_404_for_unknown_id(client, auth_headers):
+    response = client.get(f"/documents/{uuid.uuid4()}", headers=auth_headers)
     assert response.status_code == 404
