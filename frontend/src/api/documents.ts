@@ -37,3 +37,27 @@ export async function uploadDocument(file: File): Promise<UploadResult> {
   const error = (await response.json()) as UploadError;
   return { ok: false, detail: error.detail ?? "Upload failed." };
 }
+
+export interface FieldResultOut {
+  field_name: string;
+  field_value: string;
+  confidence: number;
+  needs_review: boolean;
+  created_at: string;
+}
+
+export type FieldsResult =
+  | { ok: true; fields: FieldResultOut[] }
+  | { ok: false; detail: string };
+
+export async function getDocumentFields(documentId: string): Promise<FieldsResult> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/fields`);
+
+  if (response.ok) {
+    const fields = (await response.json()) as FieldResultOut[];
+    return { ok: true, fields };
+  }
+
+  const error = (await response.json()) as UploadError;
+  return { ok: false, detail: error.detail ?? "Could not load extracted fields." };
+}
