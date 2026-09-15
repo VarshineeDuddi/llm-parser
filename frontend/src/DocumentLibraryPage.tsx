@@ -49,6 +49,9 @@ export function DocumentLibraryPage() {
           <Button variant="outlined" component={Link} to="/document-types">
             Document Types
           </Button>
+          <Button variant="outlined" component={Link} to="/needs-review">
+            Needs Review
+          </Button>
           <Button variant="contained" component={Link} to="/upload">
             Upload a document
           </Button>
