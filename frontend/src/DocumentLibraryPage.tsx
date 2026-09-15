@@ -42,9 +42,14 @@ export function DocumentLibraryPage() {
     <Box sx={{ maxWidth: 960, mx: "auto", mt: 8, px: 2 }}>
       <Stack direction="row" sx={{ mb: 3, justifyContent: "space-between", alignItems: "center" }}>
         <Typography variant="h5">Document Library</Typography>
-        <Button variant="contained" component={Link} to="/upload">
-          Upload a document
-        </Button>
+        <Stack direction="row" spacing={2}>
+          <Button variant="outlined" component={Link} to="/fields">
+            Field Explorer
+          </Button>
+          <Button variant="contained" component={Link} to="/upload">
+            Upload a document
+          </Button>
+        </Stack>
       </Stack>
 
       {errorDetail && <Alert severity="error">{errorDetail}</Alert>}
