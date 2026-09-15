@@ -4,13 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user
 from app.config import settings
 from app.db import get_db
 from app.duplicates import run_duplicate_detection
 from app.extraction import run_extraction
 from app.formats import detect_format
 from app.llm_extraction import run_llm_extraction
-from app.models import Document, DocumentExtraction, ExtractionResult
+from app.models import Document, DocumentExtraction, ExtractionResult, User
 from app.schemas import DocumentOut, ExtractionOut, FieldResultOut
 from app.storage import storage_client
 
@@ -37,6 +38,7 @@ def _document_out(document: Document, db: Session) -> DocumentOut:
 @router.post("/upload", response_model=DocumentOut, status_code=status.HTTP_201_CREATED)
 async def upload_document(
     file: UploadFile | None = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DocumentOut:
     if file is None or not file.filename:
@@ -69,6 +71,7 @@ async def upload_document(
         size_bytes=len(content),
         storage_key=storage_key,
         status="received",
+        owner_id=current_user.id,
     )
     db.add(document)
     db.commit()
@@ -83,9 +86,13 @@ async def upload_document(
 
 
 @router.get("/{document_id}", response_model=DocumentOut)
-def get_document(document_id: uuid.UUID, db: Session = Depends(get_db)) -> DocumentOut:
+def get_document(
+    document_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DocumentOut:
     document = db.get(Document, document_id)
-    if document is None:
+    if document is None or document.owner_id != current_user.id:
         raise HTTPException(status_code=404, detail="Document not found.")
     return _document_out(document, db)
 
@@ -94,10 +101,11 @@ def get_document(document_id: uuid.UUID, db: Session = Depends(get_db)) -> Docum
 def get_document_fields(
     document_id: uuid.UUID,
     needs_review: bool | None = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[ExtractionResult]:
     document = db.get(Document, document_id)
-    if document is None:
+    if document is None or document.owner_id != current_user.id:
         raise HTTPException(status_code=404, detail="Document not found.")
 
     stmt = select(ExtractionResult).where(ExtractionResult.document_id == document_id)
@@ -107,7 +115,18 @@ def get_document_fields(
 
 
 @router.get("/{document_id}/extraction", response_model=ExtractionOut)
-def get_extraction(document_id: uuid.UUID, db: Session = Depends(get_db)) -> DocumentExtraction:
+def get_extraction(
+    document_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DocumentExtraction:
+    document = db.get(Document, document_id)
+    if document is None or document.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=404,
+            detail="No extraction found for this document.",
+        )
+
     extraction = db.execute(
         select(DocumentExtraction).where(DocumentExtraction.document_id == document_id)
     ).scalar_one_or_none()

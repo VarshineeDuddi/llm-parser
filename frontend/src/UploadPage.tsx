@@ -19,7 +19,11 @@ import {
 } from "./api/documents";
 import { downloadFieldsAsCsv } from "./exportFields";
 
-export function UploadPage() {
+interface UploadPageProps {
+  onUnauthorized: () => void;
+}
+
+export function UploadPage({ onUnauthorized }: UploadPageProps) {
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [document, setDocument] = useState<DocumentOut | null>(null);
@@ -44,6 +48,8 @@ export function UploadPage() {
         } else {
           setFieldsError(fieldsResult.detail);
         }
+      } else if (result.unauthorized) {
+        onUnauthorized();
       } else {
         setErrorDetail(result.detail);
       }

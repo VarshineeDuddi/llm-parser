@@ -3,17 +3,17 @@ model (3.1): retrieval by field name across documents, and retrieval of
 documents by classified type. (Retrieval by document lives on the
 `documents` router, since it's naturally scoped under `/documents/{id}`.)
 
-No access control on any of these endpoints today -- matching the
-existing (unauthenticated) posture of every endpoint already shipped;
-not a new gap this story introduces."""
+Access-scoping change: both endpoints now require authentication and are
+scoped to only the authenticated caller's own documents."""
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user
 from app.db import get_db
 from app.llm_extraction import DOCUMENT_TYPE_FIELD_NAME
-from app.models import Document, ExtractionResult
+from app.models import Document, ExtractionResult, User
 from app.routers.documents import _document_out
 from app.schemas import DocumentOut, FieldResultWithDocumentOut, PaginatedResponse
 
@@ -29,9 +29,17 @@ def get_field_occurrences(
     needs_review: bool | None = None,
     limit: int = Query(DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT),
     offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> PaginatedResponse[FieldResultWithDocumentOut]:
-    base_stmt = select(ExtractionResult).where(ExtractionResult.field_name == field_name)
+    base_stmt = (
+        select(ExtractionResult)
+        .join(Document, Document.id == ExtractionResult.document_id)
+        .where(
+            ExtractionResult.field_name == field_name,
+            Document.owner_id == current_user.id,
+        )
+    )
     if needs_review is not None:
         base_stmt = base_stmt.where(ExtractionResult.needs_review == needs_review)
 
@@ -50,6 +58,7 @@ def get_documents_by_type(
     type: str,
     limit: int = Query(DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT),
     offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> PaginatedResponse[DocumentOut]:
     base_stmt = (
@@ -58,6 +67,7 @@ def get_documents_by_type(
         .where(
             ExtractionResult.field_name == DOCUMENT_TYPE_FIELD_NAME,
             ExtractionResult.field_value == type,
+            Document.owner_id == current_user.id,
         )
     )
 

@@ -1,3 +1,5 @@
+import { getStoredApiKey } from "../apiKey";
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 export interface DocumentOut {
@@ -16,9 +18,40 @@ export interface UploadError {
   detail: string;
 }
 
+function authHeaders(): HeadersInit {
+  const apiKey = getStoredApiKey();
+  return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+}
+
+export interface RegisterUserOut {
+  id: string;
+  name: string;
+  api_key: string;
+}
+
+export type RegisterResult =
+  | { ok: true; user: RegisterUserOut }
+  | { ok: false; detail: string };
+
+export async function registerUser(name: string): Promise<RegisterResult> {
+  const response = await fetch(`${API_BASE_URL}/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+
+  if (response.ok) {
+    const user = (await response.json()) as RegisterUserOut;
+    return { ok: true, user };
+  }
+
+  const error = (await response.json()) as UploadError;
+  return { ok: false, detail: error.detail ?? "Registration failed." };
+}
+
 export type UploadResult =
   | { ok: true; document: DocumentOut }
-  | { ok: false; detail: string };
+  | { ok: false; detail: string; unauthorized: boolean };
 
 export async function uploadDocument(file: File): Promise<UploadResult> {
   const formData = new FormData();
@@ -27,6 +60,7 @@ export async function uploadDocument(file: File): Promise<UploadResult> {
   const response = await fetch(`${API_BASE_URL}/documents/upload`, {
     method: "POST",
     body: formData,
+    headers: authHeaders(),
   });
 
   if (response.ok) {
@@ -35,7 +69,11 @@ export async function uploadDocument(file: File): Promise<UploadResult> {
   }
 
   const error = (await response.json()) as UploadError;
-  return { ok: false, detail: error.detail ?? "Upload failed." };
+  return {
+    ok: false,
+    detail: error.detail ?? "Upload failed.",
+    unauthorized: response.status === 401,
+  };
 }
 
 export interface FieldResultOut {
@@ -51,7 +89,9 @@ export type FieldsResult =
   | { ok: false; detail: string };
 
 export async function getDocumentFields(documentId: string): Promise<FieldsResult> {
-  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/fields`);
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/fields`, {
+    headers: authHeaders(),
+  });
 
   if (response.ok) {
     const fields = (await response.json()) as FieldResultOut[];

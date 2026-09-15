@@ -500,7 +500,7 @@ def test_llm_extraction_failure_for_one_document_does_not_affect_another(db_sess
     assert failing_extraction.status == "succeeded"
 
 
-def test_upload_triggers_llm_extraction_when_text_extraction_succeeds(client, db_session, monkeypatch):
+def test_upload_triggers_llm_extraction_when_text_extraction_succeeds(client, auth_headers, db_session, monkeypatch):
     raw_response = json.dumps(
         {
             "fields": [
@@ -524,6 +524,7 @@ def test_upload_triggers_llm_extraction_when_text_extraction_succeeds(client, db
     response = client.post(
         "/documents/upload",
         files={"file": ("sample.txt", b"hello world", "text/plain")},
+        headers=auth_headers,
     )
     assert response.status_code == 201
     document_id = uuid.UUID(response.json()["id"])
@@ -543,7 +544,7 @@ def test_upload_triggers_llm_extraction_when_text_extraction_succeeds(client, db
     assert results["greeting"].needs_review is True
 
 
-def test_upload_does_not_trigger_llm_extraction_when_text_extraction_fails(client, db_session, monkeypatch):
+def test_upload_does_not_trigger_llm_extraction_when_text_extraction_fails(client, auth_headers, db_session, monkeypatch):
     called = {"count": 0}
 
     def _extract(text: str) -> str:
@@ -565,6 +566,7 @@ def test_upload_does_not_trigger_llm_extraction_when_text_extraction_fails(clien
     response = client.post(
         "/documents/upload",
         files={"file": ("scanned.pdf", blank_pdf, "application/pdf")},
+        headers=auth_headers,
     )
     assert response.status_code == 201
     document_id = uuid.UUID(response.json()["id"])
@@ -638,7 +640,7 @@ def test_different_documents_produce_different_field_sets(db_session, monkeypatc
 
 
 def test_llm_extraction_runs_for_every_successful_text_extraction_no_duplicate_skip_yet(
-    client, db_session, monkeypatch
+    client, auth_headers, db_session, monkeypatch
 ):
     raw_response = json.dumps(
         {
@@ -663,10 +665,12 @@ def test_llm_extraction_runs_for_every_successful_text_extraction_no_duplicate_s
     first = client.post(
         "/documents/upload",
         files={"file": ("a.txt", b"identical content", "text/plain")},
+        headers=auth_headers,
     )
     second = client.post(
         "/documents/upload",
         files={"file": ("b.txt", b"identical content", "text/plain")},
+        headers=auth_headers,
     )
 
     assert first.status_code == 201

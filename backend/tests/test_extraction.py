@@ -177,10 +177,11 @@ def test_run_extraction_captures_extractor_exception(db_session, s3, monkeypatch
 # --- Upload integration (spec: Extraction Triggered After Upload, Extraction Failure Isolation) ---
 
 
-def test_upload_triggers_extraction_synchronously(client, db_session):
+def test_upload_triggers_extraction_synchronously(client, auth_headers, db_session):
     response = client.post(
         "/documents/upload",
         files={"file": ("sample.txt", b"hello world", "text/plain")},
+        headers=auth_headers,
     )
     assert response.status_code == 201
     body = response.json()
@@ -195,10 +196,11 @@ def test_upload_triggers_extraction_synchronously(client, db_session):
     assert extraction_row.status == "succeeded"
 
 
-def test_upload_extraction_failure_does_not_affect_document(client, db_session):
+def test_upload_extraction_failure_does_not_affect_document(client, auth_headers, db_session):
     response = client.post(
         "/documents/upload",
         files={"file": ("sample.pdf", BLANK_PDF, "application/pdf")},
+        headers=auth_headers,
     )
     assert response.status_code == 201
     body = response.json()
@@ -214,14 +216,15 @@ def test_upload_extraction_failure_does_not_affect_document(client, db_session):
 # --- Extraction retrieval (spec: Extracted Text Persistence, Extraction Outcome Tracking) ---
 
 
-def test_get_extraction_returns_text_for_succeeded(client):
+def test_get_extraction_returns_text_for_succeeded(client, auth_headers):
     response = client.post(
         "/documents/upload",
         files={"file": ("sample.txt", b"retrievable text", "text/plain")},
+        headers=auth_headers,
     )
     document_id = response.json()["id"]
 
-    get_response = client.get(f"/documents/{document_id}/extraction")
+    get_response = client.get(f"/documents/{document_id}/extraction", headers=auth_headers)
 
     assert get_response.status_code == 200
     body = get_response.json()
@@ -230,14 +233,15 @@ def test_get_extraction_returns_text_for_succeeded(client):
     assert body["failure_reason"] is None
 
 
-def test_get_extraction_returns_failure_reason_not_text(client):
+def test_get_extraction_returns_failure_reason_not_text(client, auth_headers):
     response = client.post(
         "/documents/upload",
         files={"file": ("sample.pdf", BLANK_PDF, "application/pdf")},
+        headers=auth_headers,
     )
     document_id = response.json()["id"]
 
-    get_response = client.get(f"/documents/{document_id}/extraction")
+    get_response = client.get(f"/documents/{document_id}/extraction", headers=auth_headers)
 
     assert get_response.status_code == 200
     body = get_response.json()

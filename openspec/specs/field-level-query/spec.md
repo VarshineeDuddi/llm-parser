@@ -9,20 +9,20 @@ computed is retrievable rather than write-only.
 
 ### Requirement: Retrieve All Fields For A Document
 The system SHALL allow retrieving every field-level record for a given
-document by that document's identifier. Each returned record SHALL
-include its field name, value, confidence, and whether it requires
-human review.
+document by that document's identifier, for the authenticated user that
+owns it. Each returned record SHALL include its field name, value,
+confidence, and whether it requires human review.
 
 #### Scenario: Fields retrieved for a document with extracted results
-- **WHEN** a caller requests the fields for a document that has
-  field-level records
+- **WHEN** the owning authenticated user requests the fields for their
+  own document that has field-level records
 - **THEN** the system returns every field-level record for that
   document, each including confidence and its review-required flag
 
 #### Scenario: Empty result for a document with no extracted fields
-- **WHEN** a caller requests the fields for a document that exists but
-  has no field-level records (for example, extraction failed, or
-  produced nothing grounded)
+- **WHEN** the owning authenticated user requests the fields for their
+  own document that exists but has no field-level records (for example,
+  extraction failed, or produced nothing grounded)
 - **THEN** the system returns an empty result, not an error
 
 #### Scenario: Not found for a nonexistent document
@@ -30,34 +30,58 @@ human review.
   not correspond to any document
 - **THEN** the system returns a not-found response
 
+#### Scenario: Not found for a document owned by another user
+- **WHEN** a caller requests fields for a document that exists but is
+  owned by a different user
+- **THEN** the system returns the same not-found response as for a
+  nonexistent document, without revealing that the document belongs to
+  someone else
+
 ### Requirement: Retrieve All Occurrences Of A Field Across Documents
 The system SHALL allow retrieving every field-level record with a given
-field name across all documents that have one.
+field name across all documents owned by the requesting authenticated
+user.
 
 #### Scenario: Records retrieved by field name
-- **WHEN** a caller requests records for a field name that exists on one
-  or more documents
+- **WHEN** an authenticated user requests records for a field name that
+  exists on one or more of their own documents
 - **THEN** the system returns every field-level record with that field
-  name, each identifying which document it belongs to
+  name from that user's own documents, each identifying which document
+  it belongs to
 
 #### Scenario: Empty result for an unused field name
-- **WHEN** a caller requests records for a field name no document has
+- **WHEN** a caller requests records for a field name none of their own
+  documents has
 - **THEN** the system returns an empty result, not an error
 
+#### Scenario: Records from another user's documents are excluded
+- **WHEN** a field name exists on both the requesting user's own
+  documents and a different user's documents
+- **THEN** the system returns only the records from the requesting
+  user's own documents, never a record from a document owned by a
+  different user
+
 ### Requirement: Retrieve Documents By Classified Type
-The system SHALL allow retrieving the set of documents whose classified
-document type matches a given value, without requiring the caller to
-know how document type is internally represented in storage.
+The system SHALL allow retrieving the set of documents, owned by the
+requesting authenticated user, whose classified document type matches a
+given value, without requiring the caller to know how document type is
+internally represented in storage.
 
 #### Scenario: Documents retrieved by classified type
-- **WHEN** a caller requests documents of a given classified type that
-  one or more documents have
+- **WHEN** an authenticated user requests documents of a given classified
+  type that one or more of their own documents have
 - **THEN** the system returns those documents
 
 #### Scenario: Empty result for an unused type
-- **WHEN** a caller requests documents of a classified type no document
-  has
+- **WHEN** a caller requests documents of a classified type none of
+  their own documents has
 - **THEN** the system returns an empty result, not an error
+
+#### Scenario: Documents from another user's account are excluded
+- **WHEN** a classified type matches both the requesting user's own
+  documents and a different user's documents
+- **THEN** the system returns only the requesting user's own matching
+  documents, never a document owned by a different user
 
 ### Requirement: Filter Retrieval To Records Needing Review
 The by-document and by-field retrieval SHALL support restricting results

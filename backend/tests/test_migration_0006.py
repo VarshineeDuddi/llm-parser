@@ -41,13 +41,16 @@ def _current_revision() -> str:
 @pytest.fixture()
 def at_0005():
     """Downgrade to 0005 for the test body, then always restore head."""
-    assert _current_revision() == "0006", "expected the suite to start at head (0006)"
+    starting_revision = _current_revision()
+    assert starting_revision in ("0006", "0007"), (
+        f"expected the suite to start at 0006 or later, got {starting_revision}"
+    )
     _alembic("downgrade", "0005")
     try:
         yield
     finally:
         _alembic("upgrade", "head")
-        assert _current_revision() == "0006"
+        assert _current_revision() == starting_revision
 
 
 def _insert_document(conn, document_id) -> None:
