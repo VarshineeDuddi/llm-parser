@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -149,5 +149,52 @@ describe("FieldExplorerPage", () => {
 
     const link = await screen.findByRole("link", { name: "doc-42" });
     expect(link).toHaveAttribute("href", "/documents/doc-42");
+  });
+
+  it("shows a confidence indicator alongside the needs-review chip per result (task 4.2)", async () => {
+    mockedGetFieldOccurrences.mockResolvedValue({
+      ok: true,
+      page: makePage([makeResult({ confidence: 0.9, needs_review: false })]),
+    });
+
+    renderPage();
+    await search("total");
+
+    const row = (await screen.findByText("$42")).closest("tr")!;
+    expect(within(row).getByText("90%")).toBeInTheDocument();
+    expect(within(row).getByText("Confirmed")).toBeInTheDocument();
+  });
+
+  it("shows a loading skeleton while a search is in flight, then removes it (task 5.1)", async () => {
+    let resolveFetch!: (value: unknown) => void;
+    mockedGetFieldOccurrences.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+
+    renderPage();
+    await search("total");
+
+    expect(screen.getByLabelText("Loading field explorer results")).toBeInTheDocument();
+
+    resolveFetch({ ok: true, page: makePage([]) });
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Loading field explorer results")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("still shows the no-results message once the loading skeleton is removed (task 5.2)", async () => {
+    mockedGetFieldOccurrences.mockResolvedValue({ ok: true, page: makePage([]) });
+
+    renderPage();
+    await search("unused_field");
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Loading field explorer results")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("No documents were found with this field.")).toBeInTheDocument();
   });
 });

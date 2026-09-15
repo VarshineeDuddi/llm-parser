@@ -75,10 +75,10 @@ describe("DocumentLibraryPage", () => {
 
     expect(await screen.findByText("invoice.pdf")).toBeInTheDocument();
     expect(screen.getByText("pdf")).toBeInTheDocument();
-    expect(screen.getByText("2048")).toBeInTheDocument();
-    expect(screen.getByText("received")).toBeInTheDocument();
-    expect(screen.getByText("succeeded")).toBeInTheDocument();
-    expect(screen.getByText("No")).toBeInTheDocument();
+    expect(screen.getByText("2.0 KB")).toBeInTheDocument();
+    expect(screen.getByText("Received")).toBeInTheDocument();
+    expect(screen.getByText("Succeeded")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
   });
 
   it("shows an explicit message when no documents have been uploaded", async () => {
@@ -141,5 +141,47 @@ describe("DocumentLibraryPage", () => {
 
     const link = await screen.findByRole("link", { name: "report.docx" });
     expect(link).toHaveAttribute("href", "/documents/doc-42");
+  });
+
+  it("renders correctly without its own hardcoded nav buttons (task 2.3)", async () => {
+    mockedGetDocuments.mockResolvedValue({ ok: true, page: makePage([]) });
+
+    renderLibrary();
+
+    await screen.findByText("No documents have been uploaded yet.");
+    expect(screen.getByText("Document Library")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /upload a document/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /field explorer/i })).not.toBeInTheDocument();
+  });
+
+  it("shows a loading skeleton before data resolves, then removes it (task 5.1)", async () => {
+    let resolveFetch!: (value: unknown) => void;
+    mockedGetDocuments.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+
+    renderLibrary();
+
+    expect(screen.getByLabelText("Loading document library")).toBeInTheDocument();
+
+    resolveFetch({ ok: true, page: makePage([]) });
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Loading document library")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("still shows the empty-state message once the loading skeleton is removed (task 5.2)", async () => {
+    mockedGetDocuments.mockResolvedValue({ ok: true, page: makePage([]) });
+
+    renderLibrary();
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Loading document library")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("No documents have been uploaded yet.")).toBeInTheDocument();
   });
 });

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -12,6 +13,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import { getNeedsReviewQueue, type FieldResultWithDocumentOut } from "./api/documents";
+import { formatDate } from "./formatting";
 
 const PAGE_SIZE = 10;
 
@@ -20,10 +22,12 @@ export function NeedsReviewQueuePage() {
   const [results, setResults] = useState<FieldResultWithDocumentOut[] | null>(null);
   const [total, setTotal] = useState(0);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setErrorDetail(null);
+    setLoading(true);
     getNeedsReviewQueue({ limit: PAGE_SIZE, offset }).then((result) => {
       if (cancelled) return;
       if (result.ok) {
@@ -32,6 +36,7 @@ export function NeedsReviewQueuePage() {
       } else {
         setErrorDetail(result.detail);
       }
+      setLoading(false);
     });
     return () => {
       cancelled = true;
@@ -45,6 +50,14 @@ export function NeedsReviewQueuePage() {
       </Typography>
 
       {errorDetail && <Alert severity="error">{errorDetail}</Alert>}
+
+      {loading && results === null && (
+        <Stack spacing={1} aria-label="Loading needs-review queue">
+          <Skeleton variant="rectangular" height={40} />
+          <Skeleton variant="rectangular" height={40} />
+          <Skeleton variant="rectangular" height={40} />
+        </Stack>
+      )}
 
       {results !== null && results.length === 0 && (
         <Alert severity="info">Nothing needs review right now.</Alert>
@@ -60,6 +73,7 @@ export function NeedsReviewQueuePage() {
                   <TableCell>Field</TableCell>
                   <TableCell>Value</TableCell>
                   <TableCell>Confidence</TableCell>
+                  <TableCell>Flagged</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -71,6 +85,7 @@ export function NeedsReviewQueuePage() {
                     <TableCell>{result.field_name}</TableCell>
                     <TableCell>{result.field_value}</TableCell>
                     <TableCell>{result.confidence}</TableCell>
+                    <TableCell>{formatDate(result.created_at)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

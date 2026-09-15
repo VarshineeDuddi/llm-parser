@@ -3,6 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
+import Skeleton from "@mui/material/Skeleton";
+import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -18,6 +20,7 @@ import {
   type ExtractionOut,
   type FieldResultOut,
 } from "./api/documents";
+import { ConfidenceIndicator } from "./ConfidenceIndicator";
 
 export function DocumentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -25,11 +28,13 @@ export function DocumentDetailPage() {
   const [extraction, setExtraction] = useState<ExtractionOut | null>(null);
   const [fields, setFields] = useState<FieldResultOut[] | null>(null);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
     setErrorDetail(null);
+    setLoading(true);
 
     Promise.all([getDocument(id), getExtraction(id), getDocumentFields(id)]).then(
       ([documentResult, extractionResult, fieldsResult]) => {
@@ -48,6 +53,8 @@ export function DocumentDetailPage() {
         if (fieldsResult.ok) {
           setFields(fieldsResult.fields);
         }
+
+        setLoading(false);
       },
     );
 
@@ -60,6 +67,18 @@ export function DocumentDetailPage() {
     return (
       <Box sx={{ maxWidth: 720, mx: "auto", mt: 8, px: 2 }}>
         <Alert severity="error">{errorDetail}</Alert>
+      </Box>
+    );
+  }
+
+  if (loading && !document) {
+    return (
+      <Box sx={{ maxWidth: 720, mx: "auto", mt: 8, px: 2 }}>
+        <Stack spacing={1} aria-label="Loading document detail">
+          <Skeleton variant="text" width="60%" height={40} />
+          <Skeleton variant="rectangular" height={100} />
+          <Skeleton variant="rectangular" height={80} />
+        </Stack>
       </Box>
     );
   }
@@ -116,6 +135,7 @@ export function DocumentDetailPage() {
               <TableRow>
                 <TableCell>Field</TableCell>
                 <TableCell>Value</TableCell>
+                <TableCell>Confidence</TableCell>
                 <TableCell>Review</TableCell>
               </TableRow>
             </TableHead>
@@ -124,6 +144,9 @@ export function DocumentDetailPage() {
                 <TableRow key={field.field_name}>
                   <TableCell>{field.field_name}</TableCell>
                   <TableCell>{field.field_value}</TableCell>
+                  <TableCell>
+                    <ConfidenceIndicator confidence={field.confidence} />
+                  </TableCell>
                   <TableCell>
                     {field.needs_review ? (
                       <Chip label="Needs review" color="warning" size="small" />

@@ -128,4 +128,53 @@ describe("DocumentTypeBrowserPage", () => {
     const link = await screen.findByRole("link", { name: "report.docx" });
     expect(link).toHaveAttribute("href", "/documents/doc-42");
   });
+
+  it("renders formatted file size and status chips, not raw values (task 4.1)", async () => {
+    mockedGetDocumentsByType.mockResolvedValue({
+      ok: true,
+      page: makePage([
+        makeDocument({ size_bytes: 2048, status: "received", extraction_status: "succeeded" }),
+      ]),
+    });
+
+    renderPage();
+    await search("invoice");
+
+    expect(await screen.findByText("2.0 KB")).toBeInTheDocument();
+    expect(screen.getByText("Received")).toBeInTheDocument();
+    expect(screen.getByText("Succeeded")).toBeInTheDocument();
+  });
+
+  it("shows a loading skeleton while a search is in flight, then removes it (task 5.1)", async () => {
+    let resolveFetch!: (value: unknown) => void;
+    mockedGetDocumentsByType.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+
+    renderPage();
+    await search("invoice");
+
+    expect(screen.getByLabelText("Loading document type results")).toBeInTheDocument();
+
+    resolveFetch({ ok: true, page: makePage([]) });
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Loading document type results")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("still shows the empty-state message once the loading skeleton is removed (task 5.2)", async () => {
+    mockedGetDocumentsByType.mockResolvedValue({ ok: true, page: makePage([]) });
+
+    renderPage();
+    await search("unused_type");
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Loading document type results")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("No documents were found with this type.")).toBeInTheDocument();
+  });
 });

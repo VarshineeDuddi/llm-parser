@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
+import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -12,6 +14,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import { getDocuments, type DocumentOut } from "./api/documents";
+import { formatDate, formatFileSize, formatStatusLabel, statusChipColor } from "./formatting";
 
 const PAGE_SIZE = 10;
 
@@ -20,10 +23,12 @@ export function DocumentLibraryPage() {
   const [documents, setDocuments] = useState<DocumentOut[] | null>(null);
   const [total, setTotal] = useState(0);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setErrorDetail(null);
+    setLoading(true);
     getDocuments(PAGE_SIZE, offset).then((result) => {
       if (cancelled) return;
       if (result.ok) {
@@ -32,6 +37,7 @@ export function DocumentLibraryPage() {
       } else {
         setErrorDetail(result.detail);
       }
+      setLoading(false);
     });
     return () => {
       cancelled = true;
@@ -40,25 +46,19 @@ export function DocumentLibraryPage() {
 
   return (
     <Box sx={{ maxWidth: 960, mx: "auto", mt: 8, px: 2 }}>
-      <Stack direction="row" sx={{ mb: 3, justifyContent: "space-between", alignItems: "center" }}>
-        <Typography variant="h5">Document Library</Typography>
-        <Stack direction="row" spacing={2}>
-          <Button variant="outlined" component={Link} to="/fields">
-            Field Explorer
-          </Button>
-          <Button variant="outlined" component={Link} to="/document-types">
-            Document Types
-          </Button>
-          <Button variant="outlined" component={Link} to="/needs-review">
-            Needs Review
-          </Button>
-          <Button variant="contained" component={Link} to="/upload">
-            Upload a document
-          </Button>
-        </Stack>
-      </Stack>
+      <Typography variant="h5" sx={{ mb: 3 }}>
+        Document Library
+      </Typography>
 
       {errorDetail && <Alert severity="error">{errorDetail}</Alert>}
+
+      {loading && documents === null && (
+        <Stack spacing={1} aria-label="Loading document library">
+          <Skeleton variant="rectangular" height={40} />
+          <Skeleton variant="rectangular" height={40} />
+          <Skeleton variant="rectangular" height={40} />
+        </Stack>
+      )}
 
       {documents !== null && documents.length === 0 && (
         <Alert severity="info">No documents have been uploaded yet.</Alert>
@@ -86,11 +86,38 @@ export function DocumentLibraryPage() {
                       <Link to={`/documents/${document.id}`}>{document.original_filename}</Link>
                     </TableCell>
                     <TableCell>{document.format}</TableCell>
-                    <TableCell>{document.size_bytes}</TableCell>
-                    <TableCell>{new Date(document.created_at).toLocaleString()}</TableCell>
-                    <TableCell>{document.status}</TableCell>
-                    <TableCell>{document.extraction_status}</TableCell>
-                    <TableCell>{document.duplicate_of_id ? "Yes" : "No"}</TableCell>
+                    <TableCell>{formatFileSize(document.size_bytes)}</TableCell>
+                    <TableCell>{formatDate(document.created_at)}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={formatStatusLabel(document.status)}
+                        color={statusChipColor(document.status)}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={formatStatusLabel(document.extraction_status)}
+                        color={statusChipColor(document.extraction_status)}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {document.duplicate_of_id ? (
+                        <Chip
+                          component={Link}
+                          to={`/documents/${document.duplicate_of_id}`}
+                          clickable
+                          label="Duplicate"
+                          color="default"
+                          size="small"
+                        />
+                      ) : (
+                        <Typography component="span" variant="body2" sx={{ color: "text.secondary" }}>
+                          —
+                        </Typography>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

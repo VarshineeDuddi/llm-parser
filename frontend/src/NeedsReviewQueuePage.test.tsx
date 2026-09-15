@@ -115,4 +115,48 @@ describe("NeedsReviewQueuePage", () => {
     const link = await screen.findByRole("link", { name: "doc-42" });
     expect(link).toHaveAttribute("href", "/documents/doc-42");
   });
+
+  it("renders a formatted flagged date, not the raw timestamp (task 4.3)", async () => {
+    mockedGetNeedsReviewQueue.mockResolvedValue({
+      ok: true,
+      page: makePage([makeResult({ created_at: "2026-01-01T00:00:00Z" })]),
+    });
+
+    renderPage();
+
+    await screen.findByText("$42");
+    expect(screen.queryByText("2026-01-01T00:00:00Z")).not.toBeInTheDocument();
+    expect(screen.getByText(/2026/)).toBeInTheDocument();
+  });
+
+  it("shows a loading skeleton before data resolves, then removes it (task 5.1)", async () => {
+    let resolveFetch!: (value: unknown) => void;
+    mockedGetNeedsReviewQueue.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+
+    renderPage();
+
+    expect(screen.getByLabelText("Loading needs-review queue")).toBeInTheDocument();
+
+    resolveFetch({ ok: true, page: makePage([]) });
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Loading needs-review queue")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("still shows the empty-state message once the loading skeleton is removed (task 5.2)", async () => {
+    mockedGetNeedsReviewQueue.mockResolvedValue({ ok: true, page: makePage([]) });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Loading needs-review queue")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("Nothing needs review right now.")).toBeInTheDocument();
+  });
 });

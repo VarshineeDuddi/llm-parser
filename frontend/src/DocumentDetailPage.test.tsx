@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DocumentDetailPage } from "./DocumentDetailPage";
@@ -151,6 +151,29 @@ describe("DocumentDetailPage", () => {
     expect(screen.getByText("Needs review")).toBeInTheDocument();
   });
 
+  it("shows a confidence indicator alongside the needs-review chip per field (task 4.2)", async () => {
+    mockedGetDocument.mockResolvedValue({ ok: true, document: makeDocument() });
+    mockedGetExtraction.mockResolvedValue({ ok: true, extraction: makeExtraction() });
+    mockedGetDocumentFields.mockResolvedValue({
+      ok: true,
+      fields: [
+        {
+          field_name: "confident_field",
+          field_value: "yes",
+          confidence: 0.9,
+          needs_review: false,
+          created_at: "2026-01-01T00:00:00Z",
+        },
+      ] satisfies FieldResultOut[],
+    });
+
+    renderDetail();
+
+    expect(await screen.findByText("confident_field")).toBeInTheDocument();
+    expect(screen.getByText("90%")).toBeInTheDocument();
+    expect(screen.getByText("Confirmed")).toBeInTheDocument();
+  });
+
   it("shows an explicit no-fields message when there are none", async () => {
     mockedGetDocument.mockResolvedValue({ ok: true, document: makeDocument() });
     mockedGetExtraction.mockResolvedValue({ ok: true, extraction: makeExtraction() });
@@ -189,5 +212,29 @@ describe("DocumentDetailPage", () => {
 
     await screen.findByText("sample.txt");
     expect(screen.queryByText(/duplicate/i)).not.toBeInTheDocument();
+  });
+
+  // --- Task 5.1: loading skeleton ---
+
+  it("shows a loading skeleton before data resolves, then removes it", async () => {
+    let resolveDocument!: (value: unknown) => void;
+    mockedGetDocument.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDocument = resolve;
+        }),
+    );
+    mockedGetExtraction.mockResolvedValue({ ok: true, extraction: makeExtraction() });
+    mockedGetDocumentFields.mockResolvedValue({ ok: true, fields: [] });
+
+    renderDetail();
+
+    expect(screen.getByLabelText("Loading document detail")).toBeInTheDocument();
+
+    resolveDocument({ ok: true, document: makeDocument() });
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Loading document detail")).not.toBeInTheDocument(),
+    );
   });
 });

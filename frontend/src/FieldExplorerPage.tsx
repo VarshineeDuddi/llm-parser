@@ -6,6 +6,7 @@ import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
+import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -15,6 +16,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import { ConfidenceIndicator } from "./ConfidenceIndicator";
 import { getFieldOccurrences, type FieldResultWithDocumentOut } from "./api/documents";
 
 const PAGE_SIZE = 10;
@@ -43,9 +45,11 @@ export function FieldExplorerPage() {
   const [total, setTotal] = useState(0);
   const [sortBy, setSortBy] = useState<SortOption>("none");
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const runSearch = (fieldName: string, searchOffset: number) => {
     setErrorDetail(null);
+    setLoading(true);
     getFieldOccurrences(fieldName, { limit: PAGE_SIZE, offset: searchOffset }).then((result) => {
       if (result.ok) {
         setResults(result.page.items);
@@ -54,6 +58,7 @@ export function FieldExplorerPage() {
         setResults(null);
         setErrorDetail(result.detail);
       }
+      setLoading(false);
     });
   };
 
@@ -98,6 +103,14 @@ export function FieldExplorerPage() {
 
       {errorDetail && <Alert severity="error">{errorDetail}</Alert>}
 
+      {loading && sortedResults === null && (
+        <Stack spacing={1} aria-label="Loading field explorer results">
+          <Skeleton variant="rectangular" height={40} />
+          <Skeleton variant="rectangular" height={40} />
+          <Skeleton variant="rectangular" height={40} />
+        </Stack>
+      )}
+
       {sortedResults !== null && sortedResults.length === 0 && (
         <Alert severity="info">No documents were found with this field.</Alert>
       )}
@@ -135,7 +148,9 @@ export function FieldExplorerPage() {
                       <Link to={`/documents/${result.document_id}`}>{result.document_id}</Link>
                     </TableCell>
                     <TableCell>{result.field_value}</TableCell>
-                    <TableCell>{result.confidence}</TableCell>
+                    <TableCell>
+                      <ConfidenceIndicator confidence={result.confidence} />
+                    </TableCell>
                     <TableCell>
                       {result.needs_review ? (
                         <Chip label="Needs review" color="warning" size="small" />
