@@ -8,8 +8,12 @@ from pydantic import ValidationError
 from app import llm_client, llm_extraction
 from app.config import Settings
 from app.llm_extraction import (
+    AMBIGUOUS_LOCATION_CAP,
+    CONFIDENCE_THRESHOLD,
     DOCUMENT_TYPE_FIELD_NAME,
+    NORMALIZED_ONLY_MATCH_CAP,
     InvalidLLMResponseError,
+    compute_confidence,
     is_grounded,
     parse_response,
     run_llm_extraction,
@@ -124,6 +128,8 @@ def test_extraction_result_has_no_document_type_specific_columns():
         "field_value",
         "source_quote",
         "created_at",
+        "confidence",
+        "needs_review",
     }
 
 
@@ -147,14 +153,26 @@ def test_parse_response_valid():
     raw = json.dumps(
         {
             "fields": [
-                {"field_name": "_document_type", "value": "invoice", "source_quote": "INVOICE"},
-                {"field_name": "total", "value": "$42", "source_quote": "Total: $42"},
+                {
+                    "field_name": "_document_type",
+                    "value": "invoice",
+                    "source_quote": "INVOICE",
+                    "confidence": 0.95,
+                },
+                {
+                    "field_name": "total",
+                    "value": "$42",
+                    "source_quote": "Total: $42",
+                    "confidence": 0.8,
+                },
             ]
         }
     )
     entries = parse_response(raw)
     assert len(entries) == 2
     assert entries[0]["field_name"] == "_document_type"
+    assert entries[0]["confidence"] == 0.95
+    assert entries[1]["confidence"] == 0.8
 
 
 def test_parse_response_non_json_raises():
@@ -173,8 +191,59 @@ def test_parse_response_missing_fields_key_raises():
         parse_response(json.dumps({"other": []}))
 
 
+def test_parse_response_missing_confidence_raises():
+    raw = json.dumps(
+        {"fields": [{"field_name": "total", "value": "$42", "source_quote": "Total: $42"}]}
+    )
+    with pytest.raises(InvalidLLMResponseError):
+        parse_response(raw)
+
+
+def test_parse_response_non_numeric_confidence_raises():
+    raw = json.dumps(
+        {
+            "fields": [
+                {
+                    "field_name": "total",
+                    "value": "$42",
+                    "source_quote": "Total: $42",
+                    "confidence": "high",
+                }
+            ]
+        }
+    )
+    with pytest.raises(InvalidLLMResponseError):
+        parse_response(raw)
+
+
+def test_parse_response_boolean_confidence_raises():
+    raw = json.dumps(
+        {
+            "fields": [
+                {
+                    "field_name": "total",
+                    "value": "$42",
+                    "source_quote": "Total: $42",
+                    "confidence": True,
+                }
+            ]
+        }
+    )
+    with pytest.raises(InvalidLLMResponseError):
+        parse_response(raw)
+
+
 def test_parse_response_unwraps_markdown_code_fence():
-    payload = {"fields": [{"field_name": "_document_type", "value": "memo", "source_quote": "x"}]}
+    payload = {
+        "fields": [
+            {
+                "field_name": "_document_type",
+                "value": "memo",
+                "source_quote": "x",
+                "confidence": 0.9,
+            }
+        ]
+    }
     fenced = f"```json\n{json.dumps(payload)}\n```"
     entries = parse_response(fenced)
     assert entries[0]["field_name"] == "_document_type"
@@ -200,6 +269,93 @@ def test_is_grounded_paraphrase_does_not_match():
     assert is_grounded("the total amount due is forty two dollars", "Total: $42") is False
 
 
+# --- Prompt requests confidence (task 2.1) ---
+
+
+def test_system_prompt_requests_confidence_key():
+    assert "confidence" in llm_client._SYSTEM_PROMPT
+
+
+# --- Mechanical confidence adjustment (task 3.1, 3.2, 3.3) ---
+
+
+def test_exact_match_keeps_reported_confidence():
+    text = "Invoice\nTotal: $42\nThank you"
+    confidence = compute_confidence("Total: $42", text, 0.95)
+    assert confidence == 0.95
+
+
+def test_normalized_only_match_is_capped_lower():
+    text = "Invoice\nTotal:   $42\nThank you"
+    # source_quote uses single spaces; text has extra whitespace, so this is
+    # grounded only via is_grounded's normalization, not an exact substring.
+    confidence = compute_confidence("Total: $42", text, 0.95)
+    assert confidence == NORMALIZED_ONLY_MATCH_CAP
+
+
+def test_uniquely_located_quote_is_unaffected():
+    text = "Invoice\nTotal: $42\nThank you for your business"
+    confidence = compute_confidence("Total: $42", text, 0.9)
+    assert confidence == 0.9
+
+
+def test_ambiguous_location_quote_is_capped_lower():
+    text = "Total: $42 due now. Reminder: Total: $42 due now."
+    confidence = compute_confidence("Total: $42 due now.", text, 0.9)
+    assert confidence == AMBIGUOUS_LOCATION_CAP
+
+
+def test_both_adjustments_combine_to_the_lower_cap():
+    # Repeated AND only matches after normalization -- ambiguous-location cap
+    # (0.5) is lower than the normalized-only cap (0.6), so it should win.
+    text = "Total:  $42 due now. Reminder: Total:  $42 due now."
+    confidence = compute_confidence("Total: $42 due now.", text, 0.95)
+    assert confidence == min(NORMALIZED_ONLY_MATCH_CAP, AMBIGUOUS_LOCATION_CAP)
+
+
+# --- Threshold & review flagging (task 4.1) ---
+
+
+def test_run_llm_extraction_flags_entries_below_threshold(db_session, monkeypatch):
+    document = _make_document(db_session)
+    extraction = _make_extraction(db_session, document, "High: yes. Low: unsure. Exact: at.")
+    raw_response = json.dumps(
+        {
+            "fields": [
+                {
+                    "field_name": "high",
+                    "value": "yes",
+                    "source_quote": "High: yes.",
+                    "confidence": 0.9,
+                },
+                {
+                    "field_name": "low",
+                    "value": "unsure",
+                    "source_quote": "Low: unsure.",
+                    "confidence": 0.2,
+                },
+                {
+                    "field_name": "at_threshold",
+                    "value": "at",
+                    "source_quote": "Exact: at.",
+                    "confidence": CONFIDENCE_THRESHOLD,
+                },
+            ]
+        }
+    )
+    monkeypatch.setattr(llm_extraction.anthropic_client, "extract", lambda text: raw_response)
+
+    run_llm_extraction(document, extraction, db_session)
+
+    results = {
+        r.field_name: r
+        for r in db_session.query(ExtractionResult).filter_by(document_id=document.id)
+    }
+    assert results["high"].needs_review is False
+    assert results["low"].needs_review is True
+    assert results["at_threshold"].needs_review is False
+
+
 # --- Grounding wired into persistence (task 4.2, 4.3) ---
 
 
@@ -210,12 +366,23 @@ def test_run_llm_extraction_persists_only_grounded_entries(db_session, monkeypat
     raw_response = json.dumps(
         {
             "fields": [
-                {"field_name": "_document_type", "value": "invoice", "source_quote": "INVOICE"},
-                {"field_name": "total", "value": "$42", "source_quote": "Total: $42"},
+                {
+                    "field_name": "_document_type",
+                    "value": "invoice",
+                    "source_quote": "INVOICE",
+                    "confidence": 0.9,
+                },
+                {
+                    "field_name": "total",
+                    "value": "$42",
+                    "source_quote": "Total: $42",
+                    "confidence": 0.9,
+                },
                 {
                     "field_name": "fabricated",
                     "value": "made up",
                     "source_quote": "this text does not appear anywhere",
+                    "confidence": 0.9,
                 },
             ]
         }
@@ -231,6 +398,8 @@ def test_run_llm_extraction_persists_only_grounded_entries(db_session, monkeypat
 
     document_type_row = next(r for r in results if r.field_name == DOCUMENT_TYPE_FIELD_NAME)
     assert document_type_row.field_value == "invoice"
+    assert document_type_row.confidence == 0.9
+    assert document_type_row.needs_review is False
 
     outcome = db_session.query(LlmExtraction).filter_by(document_id=document.id).one()
     assert outcome.status == "succeeded"
@@ -243,7 +412,16 @@ def test_run_llm_extraction_succeeded_outcome_for_valid_response(db_session, mon
     document = _make_document(db_session)
     extraction = _make_extraction(db_session, document, "Some document text")
     raw_response = json.dumps(
-        {"fields": [{"field_name": "_document_type", "value": "memo", "source_quote": "Some"}]}
+        {
+            "fields": [
+                {
+                    "field_name": "_document_type",
+                    "value": "memo",
+                    "source_quote": "Some",
+                    "confidence": 0.9,
+                }
+            ]
+        }
     )
     monkeypatch.setattr(llm_extraction.anthropic_client, "extract", lambda text: raw_response)
 
@@ -293,7 +471,16 @@ def test_llm_extraction_failure_for_one_document_does_not_affect_another(db_sess
         if text == "Doc A text":
             raise RuntimeError("boom")
         return json.dumps(
-            {"fields": [{"field_name": "_document_type", "value": "memo", "source_quote": "Doc"}]}
+            {
+                "fields": [
+                    {
+                        "field_name": "_document_type",
+                        "value": "memo",
+                        "source_quote": "Doc",
+                        "confidence": 0.9,
+                    }
+                ]
+            }
         )
 
     monkeypatch.setattr(llm_extraction.anthropic_client, "extract", _extract)
@@ -312,7 +499,22 @@ def test_llm_extraction_failure_for_one_document_does_not_affect_another(db_sess
 
 def test_upload_triggers_llm_extraction_when_text_extraction_succeeds(client, db_session, monkeypatch):
     raw_response = json.dumps(
-        {"fields": [{"field_name": "_document_type", "value": "note", "source_quote": "hello"}]}
+        {
+            "fields": [
+                {
+                    "field_name": "_document_type",
+                    "value": "note",
+                    "source_quote": "hello",
+                    "confidence": 0.9,
+                },
+                {
+                    "field_name": "greeting",
+                    "value": "hello world",
+                    "source_quote": "hello world",
+                    "confidence": 0.3,
+                },
+            ]
+        }
     )
     monkeypatch.setattr(llm_extraction.anthropic_client, "extract", lambda text: raw_response)
 
@@ -326,6 +528,16 @@ def test_upload_triggers_llm_extraction_when_text_extraction_succeeds(client, db
     outcome = db_session.query(LlmExtraction).filter_by(document_id=document_id).one_or_none()
     assert outcome is not None
     assert outcome.status == "succeeded"
+
+    results = {
+        r.field_name: r
+        for r in db_session.query(ExtractionResult).filter_by(document_id=document_id)
+    }
+    # Every persisted row has confidence/needs_review populated (task 5.1).
+    assert results["_document_type"].confidence == 0.9
+    assert results["_document_type"].needs_review is False
+    assert results["greeting"].confidence == 0.3
+    assert results["greeting"].needs_review is True
 
 
 def test_upload_does_not_trigger_llm_extraction_when_text_extraction_fails(client, db_session, monkeypatch):
@@ -373,16 +585,36 @@ def test_different_documents_produce_different_field_sets(db_session, monkeypatc
             return json.dumps(
                 {
                     "fields": [
-                        {"field_name": "_document_type", "value": "invoice", "source_quote": "Invoice"},
-                        {"field_name": "total", "value": "$42", "source_quote": "total: $42"},
+                        {
+                            "field_name": "_document_type",
+                            "value": "invoice",
+                            "source_quote": "Invoice",
+                            "confidence": 0.9,
+                        },
+                        {
+                            "field_name": "total",
+                            "value": "$42",
+                            "source_quote": "total: $42",
+                            "confidence": 0.9,
+                        },
                     ]
                 }
             )
         return json.dumps(
             {
                 "fields": [
-                    {"field_name": "_document_type", "value": "memo", "source_quote": "Meeting notes"},
-                    {"field_name": "topic", "value": "budget", "source_quote": "discussed budget"},
+                    {
+                        "field_name": "_document_type",
+                        "value": "memo",
+                        "source_quote": "Meeting notes",
+                        "confidence": 0.9,
+                    },
+                    {
+                        "field_name": "topic",
+                        "value": "budget",
+                        "source_quote": "discussed budget",
+                        "confidence": 0.9,
+                    },
                 ]
             }
         )
@@ -406,7 +638,16 @@ def test_llm_extraction_runs_for_every_successful_text_extraction_no_duplicate_s
     client, db_session, monkeypatch
 ):
     raw_response = json.dumps(
-        {"fields": [{"field_name": "_document_type", "value": "note", "source_quote": "identical"}]}
+        {
+            "fields": [
+                {
+                    "field_name": "_document_type",
+                    "value": "note",
+                    "source_quote": "identical",
+                    "confidence": 0.9,
+                }
+            ]
+        }
     )
     calls = []
 
@@ -427,8 +668,9 @@ def test_llm_extraction_runs_for_every_successful_text_extraction_no_duplicate_s
 
     assert first.status_code == 201
     assert second.status_code == 201
-    # No duplicate-skip exists yet (1.3 not merged): the LLM is called once
-    # per document, even for identical content.
+    # run_llm_extraction still doesn't check Document.duplicate_of_id (1.3):
+    # the LLM is called once per document, even for identical content. A
+    # pre-existing gap, not something this story is responsible for closing.
     assert len(calls) == 2
 
     for response in (first, second):

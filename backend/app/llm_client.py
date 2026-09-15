@@ -13,7 +13,7 @@ _SYSTEM_PROMPT = (
     "You classify a document's type and extract every fact present in its "
     "text as field/value pairs. Respond with ONLY a single JSON object of "
     "this exact shape, no other text:\n"
-    '{"fields": [{"field_name": string, "value": string, "source_quote": string}]}\n'
+    '{"fields": [{"field_name": string, "value": string, "source_quote": string, "confidence": number}]}\n'
     "Do not rely on any fixed or predefined set of fields -- extract "
     "whatever facts are actually present in the document's text, and only "
     "those. Include exactly one entry with field_name \"_document_type\" "
@@ -22,7 +22,11 @@ _SYSTEM_PROMPT = (
     "provided document text -- never paraphrase or summarize it. If a "
     "candidate value or classification cannot be tied to a specific, "
     "quotable substring of the document, omit that entry entirely rather "
-    "than guessing."
+    "than guessing. confidence is a number between 0.0 and 1.0 reflecting "
+    "how certain you are that the value is a correct, unambiguous reading "
+    "of the document -- lower it whenever the text is unclear, could be "
+    "read more than one way, or the value is a best guess rather than a "
+    "clearly stated fact."
 )
 
 
