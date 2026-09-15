@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
@@ -10,70 +10,86 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { getDocuments, type DocumentOut } from "./api/documents";
+import { getDocumentsByType, type DocumentOut } from "./api/documents";
 
 const PAGE_SIZE = 10;
 
-export function DocumentLibraryPage() {
+export function DocumentTypeBrowserPage() {
+  const [typeInput, setTypeInput] = useState("");
+  const [searchedType, setSearchedType] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const [documents, setDocuments] = useState<DocumentOut[] | null>(null);
   const [total, setTotal] = useState(0);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const runSearch = (type: string, searchOffset: number) => {
     setErrorDetail(null);
-    getDocuments(PAGE_SIZE, offset).then((result) => {
-      if (cancelled) return;
+    getDocumentsByType(type, { limit: PAGE_SIZE, offset: searchOffset }).then((result) => {
       if (result.ok) {
         setDocuments(result.page.items);
         setTotal(result.page.total);
       } else {
+        setDocuments(null);
         setErrorDetail(result.detail);
       }
     });
-    return () => {
-      cancelled = true;
-    };
-  }, [offset]);
+  };
+
+  const handleSearch = () => {
+    const type = typeInput.trim();
+    if (!type) return;
+    setSearchedType(type);
+    setOffset(0);
+    runSearch(type, 0);
+  };
+
+  const handlePageChange = (newOffset: number) => {
+    if (!searchedType) return;
+    setOffset(newOffset);
+    runSearch(searchedType, newOffset);
+  };
 
   return (
     <Box sx={{ maxWidth: 960, mx: "auto", mt: 8, px: 2 }}>
-      <Stack direction="row" sx={{ mb: 3, justifyContent: "space-between", alignItems: "center" }}>
-        <Typography variant="h5">Document Library</Typography>
-        <Stack direction="row" spacing={2}>
-          <Button variant="outlined" component={Link} to="/fields">
-            Field Explorer
-          </Button>
-          <Button variant="outlined" component={Link} to="/document-types">
-            Document Types
-          </Button>
-          <Button variant="contained" component={Link} to="/upload">
-            Upload a document
-          </Button>
-        </Stack>
+      <Typography variant="h5" gutterBottom>
+        Document Type Browser
+      </Typography>
+
+      <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
+        <TextField
+          label="Document type"
+          value={typeInput}
+          onChange={(event) => setTypeInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") handleSearch();
+          }}
+          size="small"
+          fullWidth
+        />
+        <Button variant="contained" onClick={handleSearch} disabled={!typeInput.trim()}>
+          Search
+        </Button>
       </Stack>
 
       {errorDetail && <Alert severity="error">{errorDetail}</Alert>}
 
       {documents !== null && documents.length === 0 && (
-        <Alert severity="info">No documents have been uploaded yet.</Alert>
+        <Alert severity="info">No documents were found with this type.</Alert>
       )}
 
       {documents !== null && documents.length > 0 && (
         <>
           <TableContainer>
-            <Table size="small" aria-label="Document library">
+            <Table size="small" aria-label="Document type browser results">
               <TableHead>
                 <TableRow>
                   <TableCell>Filename</TableCell>
                   <TableCell>Format</TableCell>
                   <TableCell>Size</TableCell>
-                  <TableCell>Uploaded</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Extraction</TableCell>
-                  <TableCell>Duplicate</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -84,10 +100,8 @@ export function DocumentLibraryPage() {
                     </TableCell>
                     <TableCell>{document.format}</TableCell>
                     <TableCell>{document.size_bytes}</TableCell>
-                    <TableCell>{new Date(document.created_at).toLocaleString()}</TableCell>
                     <TableCell>{document.status}</TableCell>
                     <TableCell>{document.extraction_status}</TableCell>
-                    <TableCell>{document.duplicate_of_id ? "Yes" : "No"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -98,14 +112,14 @@ export function DocumentLibraryPage() {
             <Button
               variant="outlined"
               disabled={offset === 0}
-              onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+              onClick={() => handlePageChange(Math.max(0, offset - PAGE_SIZE))}
             >
               Previous
             </Button>
             <Button
               variant="outlined"
               disabled={offset + PAGE_SIZE >= total}
-              onClick={() => setOffset(offset + PAGE_SIZE)}
+              onClick={() => handlePageChange(offset + PAGE_SIZE)}
             >
               Next
             </Button>

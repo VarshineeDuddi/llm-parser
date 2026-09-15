@@ -4,6 +4,7 @@ import {
   getDocument,
   getDocumentFields,
   getDocuments,
+  getDocumentsByType,
   getExtraction,
   getFieldOccurrences,
   registerUser,
@@ -342,6 +343,66 @@ describe("getFieldOccurrences", () => {
     );
 
     const result = await getFieldOccurrences("total", { limit: 10, offset: 0 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.detail).toBe("Missing or invalid API key.");
+    }
+  });
+});
+
+describe("getDocumentsByType", () => {
+  beforeEach(() => {
+    setStoredApiKey("stored-key-123");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearStoredApiKey();
+  });
+
+  it("attaches the stored API key and parses a paginated response (task 1.1)", async () => {
+    const page = {
+      items: [
+        {
+          id: "doc-1",
+          status: "received",
+          original_filename: "a.txt",
+          format: "txt",
+          size_bytes: 5,
+          created_at: "2026-01-01T00:00:00Z",
+          extraction_status: "succeeded",
+          extraction_failure_reason: null,
+          duplicate_of_id: null,
+        },
+      ],
+      limit: 10,
+      offset: 0,
+      total: 1,
+    };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => page });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getDocumentsByType("invoice", { limit: 10, offset: 0 });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.page).toEqual(page);
+    }
+    const [, options] = fetchMock.mock.calls[0];
+    expect(options.headers).toEqual({ Authorization: "Bearer stored-key-123" });
+  });
+
+  it("returns an error detail on a failed response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        json: async () => ({ detail: "Missing or invalid API key." }),
+      }),
+    );
+
+    const result = await getDocumentsByType("invoice", { limit: 10, offset: 0 });
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
