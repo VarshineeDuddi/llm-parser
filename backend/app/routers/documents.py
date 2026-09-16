@@ -27,7 +27,13 @@ MAX_PAGE_LIMIT = 200
 def _document_out(document: Document, db: Session) -> DocumentOut:
     extraction = db.execute(
         select(DocumentExtraction).where(DocumentExtraction.document_id == document.id)
-    ).scalar_one()
+    ).scalar_one_or_none()
+    if extraction is None:
+        extraction_status = "unknown"
+        extraction_failure_reason = "No extraction record exists for this document."
+    else:
+        extraction_status = extraction.status
+        extraction_failure_reason = extraction.failure_reason
     return DocumentOut(
         id=document.id,
         status=document.status,
@@ -35,8 +41,8 @@ def _document_out(document: Document, db: Session) -> DocumentOut:
         format=document.format,
         size_bytes=document.size_bytes,
         created_at=document.created_at,
-        extraction_status=extraction.status,
-        extraction_failure_reason=extraction.failure_reason,
+        extraction_status=extraction_status,
+        extraction_failure_reason=extraction_failure_reason,
         duplicate_of_id=document.duplicate_of_id,
     )
 
